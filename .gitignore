@@ -2,5 +2,4 @@ data/*
 Outils+Open+Source+MLOps.pdf
 memo/*
 pickle_files/**
-Aguiar_script_adapted/__pycache__/**
-Aguiar_script_adapted/pipeline/__pycache__/**
+**.pyc
