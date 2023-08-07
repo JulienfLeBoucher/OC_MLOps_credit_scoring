@@ -1,25 +1,26 @@
-#%% 
-import pickle
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import (
-    KFold,
-    StratifiedKFold,
-)
+from sklearn.model_selection import KFold, StratifiedKFold
+
 from sklearn.metrics import (
     roc_auc_score,
     accuracy_score,
+    make_scorer,
+    fbeta_score,
 )
 
-#%%
-FEATURE_PATH = "./pickle_files/features.pkl.gz"
-STRATIFIED_KFOLD = True
-NUM_FOLDS = 5
-RANDOM_SEED = 784
+import logging
 
+logging.basicConfig(level=logging.WARN)
+logger = logging.getLogger(__name__)
+
+### SCORING
+ftwo_scorer = make_scorer(fbeta_score, beta=2)
 
 def prepare_data(
-    data_path: str
+    data_path: str,
+    drop_NAN: bool=True,
+    drop_INF: bool=True,
 ) -> tuple[pd.DataFrame, pd.Series]:
     """ 
     - Read the pickle file.
@@ -27,9 +28,24 @@ def prepare_data(
     - Determine useful columns for prediction.
     - Return the feature dataframe and the target series.
     """
-    data = pd.read_pickle(data_path)
+    try:
+        data = pd.read_pickle(data_path)
+    except Exception as e:
+        logger.exception(
+                """Unable to load features. 
+                Check the config FEATURE_PATH.
+                Error: %s", e"""
+        )
     
     data = data[data['TARGET'].notnull()]
+    
+    # Eventually drop columns with nulls 
+    # (eventually with inf being first replace with NaNs)
+    if drop_NAN:
+        if drop_INF:
+            data = data.replace(np.inf, np.NaN)
+        data = data.dropna(axis=1)
+        
     
     not_predictors = [
         'TARGET',
@@ -46,7 +62,7 @@ def prepare_data(
         .format(data[predictors].shape, data['TARGET'].shape)
     )
     return data[predictors], data['TARGET']
-# %%
+
 
 def make_folds(stratified=True):
     """ Return an sklearn Kfold(possibly stratified) cross-validator with a 
@@ -65,5 +81,6 @@ def make_folds(stratified=True):
             random_state=config.RANDOM_SEED
         )
     return folds
-    
-df, target = prepare_data(FEATURE_PATH)
+
+
+### DISPLAY ###
