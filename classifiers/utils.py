@@ -1,6 +1,11 @@
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import KFold, StratifiedKFold
+
+from sklearn.model_selection import (
+    KFold,
+    StratifiedKFold,
+    train_test_split,
+)
 
 from sklearn.metrics import (
     roc_auc_score,
@@ -62,6 +67,38 @@ def prepare_data(
         .format(data[predictors].shape, data['TARGET'].shape)
     )
     return data[predictors], data['TARGET']
+
+
+def split_data(X, y, test_size_=0.2):
+    """
+    - Merge features X and target y
+    - Split in train/test sets
+    - Re-extract targets.
+    
+    Return (train_df, test_df, y_train, y_test )
+    """ 
+    data = X.merge(y, on='SK_ID_CURR')
+    train_df, test_df = train_test_split(
+        data,
+        test_size=test_size_,
+        random_state=108,
+        stratify=data.TARGET
+    )
+    y_train = train_df.pop('TARGET')
+    y_test = test_df.pop('TARGET')
+    print(
+        f"Train shapes : {train_df.shape}, {y_train.shape}\n"
+        + f"Test shapes : {test_df.shape}, {y_test.shape}"
+    )
+    return train_df, test_df, y_train, y_test 
+    
+
+def class_percentages(target):
+    """
+    Print percentages of each element in target.
+    """
+    display(target.value_counts() * 100 / len(target))
+    return None    
 
 
 def make_folds(stratified=True):
