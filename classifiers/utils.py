@@ -1,3 +1,4 @@
+import re
 import numpy as np
 import pandas as pd
 
@@ -26,6 +27,7 @@ def prepare_data(
     data_path: str,
     drop_NAN: bool=True,
     drop_INF: bool=True,
+    n_sample: int=None,
 ) -> tuple[pd.DataFrame, pd.Series]:
     """ 
     - Read the pickle file.
@@ -62,11 +64,24 @@ def prepare_data(
     ]
     predictors = [feat for feat in data.columns if feat not in not_predictors]
     
+    if n_sample:
+        print(f"took only {n_sample} random samples.")
+        data = data.sample(n_sample)
+
     print(
         "Data shape: {}, target shape: {}"
         .format(data[predictors].shape, data['TARGET'].shape)
     )
     return data[predictors], data['TARGET']
+
+
+def rename_col_for_lgbm_compatibility(df: pd.DataFrame) -> pd.DataFrame:
+    # Change columns names ([LightGBM] Do not support special JSON characters in feature name.)
+    new_names = {col: re.sub(r'[^A-Za-z0-9_]+', '', col) for col in df.columns}
+    new_n_list = list(new_names.values())
+    # [LightGBM] Feature appears more than one time.
+    new_names = {col: f'{new_col}_{i}' if new_col in new_n_list[:i] else new_col for i, (col, new_col) in enumerate(new_names.items())}
+    return df.rename(columns=new_names)
 
 
 def split_data(X, y, test_size_=0.2):
