@@ -9,20 +9,22 @@ from sklearn.model_selection import (
 )
 
 from sklearn.metrics import (
-    roc_auc_score,
-    accuracy_score,
     make_scorer,
+    accuracy_score,
+    roc_auc_score,
+    precision_score,
+    recall_score,
     fbeta_score,
 )
+
+from imblearn.metrics import geometric_mean_score
 
 import logging
 
 logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger(__name__)
 
-### SCORING
-ftwo_scorer = make_scorer(fbeta_score, beta=2)
-
+### load and prepare the data
 def prepare_data(
     data_path: str,
     drop_NAN: bool=True,
@@ -46,11 +48,13 @@ def prepare_data(
     
     data = data[data['TARGET'].notnull()]
     
+    # Eventually replace inf with NaN
+    if drop_INF:
+        data = data.replace(np.inf, np.NaN)
+        data = data.replace(-np.inf, np.NaN)
     # Eventually drop columns with nulls 
-    # (eventually with inf being first replace with NaNs)
     if drop_NAN:
-        if drop_INF:
-            data = data.replace(np.inf, np.NaN)
+
         data = data.dropna(axis=1)
         
     
@@ -72,7 +76,7 @@ def prepare_data(
         "Data shape: {}, target shape: {}"
         .format(data[predictors].shape, data['TARGET'].shape)
     )
-    return data[predictors], data['TARGET']
+    return data[predictors], data['TARGET'].astype('int8')
 
 
 def rename_col_for_lgbm_compatibility(df: pd.DataFrame) -> pd.DataFrame:
@@ -135,4 +139,91 @@ def make_folds(stratified=True):
     return folds
 
 
-### DISPLAY ###
+### Define some metrics and scorers
+def specificity_score(y_true, y_pred):
+    """ Specificity is the recall of the negative class"""
+    return recall_score(y_true, y_pred, pos_label=0)
+
+
+def weighted_geometric_mean_score(y_true, y_pred, recall_weight=5):
+    """
+    Compute the weighted geometric mean of recall and specificity.
+    
+    It is the (recall_weight + 1)th root of the product
+    (recall^recall_weight * specificity)
+    """
+    recall = recall_score(y_true, y_pred)
+    specificity = specificity_score(y_true, y_pred)
+    return np.power(
+        np.power(recall, recall_weight) * specificity,
+        1 / (recall_weight + 1)   
+    )
+
+
+def loss_of_income_func(y_true, y_pred, fn_weight=5):
+    """ Compute the loss of income due to false negatives
+    and false positives over-penalizing false negative with a weight. 
+    """
+    tn, fp, fn, tp = confusion_matrix(**vectors).ravel()
+    return fn_weight*fn + fp
+   
+   
+scorers = {
+    'accuracy_score': make_scorer(accuracy_score),
+    'auc_score': make_scorer(roc_auc_score),
+    'precision_score': make_scorer(precision_score),
+    'recall_score': make_scorer(recall_score),
+    'f1_score': make_scorer(fbeta_score, beta=1),
+    'f2_score': make_scorer(fbeta_score, beta=2),
+    'f3_score': make_scorer(fbeta_score, beta=3),
+    'geometric_mean_score': make_scorer(geometric_mean_score, average='binary'),
+    'weighted_geometric_mean_score': make_scorer(weighted_geometric_mean_score),
+    'loss_of_income': make_scorer(loss_of_income_func, greater_is_better=False)
+}
+
+sel_fts_intrinsic = [
+    'EXT_SOURCES_MEAN',
+    'ORGANIZATION_TYPE',
+    'EXT_SOURCES_NANMEDIAN',
+    'EXT_SOURCES_MIN',
+    'EXT_SOURCES_MAX',
+    'CREDIT_TO_GOODS_RATIO',
+    'OCCUPATION_TYPE',
+    'EXT_SOURCE_3',
+    'EXT_SOURCES_PROD',
+    'GROUP2_EXT_SOURCES_MEDIAN',
+    'EXT_SOURCE_2',
+    'DAYS_EMPLOYED',
+    'BUREAU_CREDIT_DEBT_CREDIT_DIFF_MEAN',
+    'DAYS_LAST_PHONE_CHANGE',
+    'PREV_Consumer_AMT_ANNUITY_MAX',
+    'BUREAU_CLOSED_DAYS_CREDIT_VAR',
+    'INCOME_TO_EMPLOYED_RATIO',
+    'AMT_ANNUITY',
+    'EXT_SOURCE_1',
+    'CURRENT_TO_APPROVED_ANNUITY_MEAN_RATIO',
+    'EMPLOYED_TO_BIRTH_RATIO',
+    'PAYMENT_MEAN_TO_ANNUITY_RATIO',
+    'DAYS_BIRTH',
+    'BUREAU_ACTIVE_DEBT_CREDIT_DIFF_MEAN',
+    'PREV_DAYS_DECISION_MEAN',
+    'CREDIT_TO_ANNUITY_RATIO',
+    'PREV_DAYS_TERMINATION_MAX'
+]
+
+def prepare_and_impute_intrinsic_selected_features():
+    # Get the features and target of individuals with a target.
+    X, y = utils.prepare_data(
+        config.FEATURE_PATH,
+        drop_INF=False,
+        drop_NAN=False,
+    )
+    # Keep selected features.
+    X = X[sel_fts_intrinsic]
+    # Remove 2 individuals with inf values.
+    inf_mask = ((X == np.inf) | (X ==-np.inf)).any(axis=1)
+    X = X.loc[~inf_mask, :]
+    y = y[~inf_mask]
+    
+    
+    return X, y
