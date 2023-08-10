@@ -3,3 +3,5 @@ Outils+Open+Source+MLOps.pdf
 memo/*
 pickle_files/**
 **.pyc
+.python-version
+classifiers_exploration/*.gz
