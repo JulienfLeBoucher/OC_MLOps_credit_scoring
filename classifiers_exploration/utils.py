@@ -127,8 +127,8 @@ def prepare_intrinsic_selected_features(
         n_sample=n_sample,        
     )
     # Keep selected features.
-    print(f'Keep only the intrinsic selected feature: {X.shape}')
     X = X.loc[:, sel_fts_intrinsic]
+    print(f'Kept only the intrinsic selected feature: {X.shape}')
     # Remove 2 individuals with inf values.
     inf_mask = ((X == np.inf) | (X ==-np.inf)).any(axis=1)
     X = X.loc[~inf_mask, :]
@@ -325,6 +325,15 @@ my_Scorers = [
     ),
 ]
     
+    
+def make_mlflow_metrics(scorers, y_true, proba):
+    params = {}
+    for scorer in scorers:
+        (
+            params[f'best_threshold_{scorer.name}'],
+            params[f'best_score_{scorer.name}']
+        ) = scorer.find_best_threshold_and_score(y_true, proba)
+    return params
 
 
 
