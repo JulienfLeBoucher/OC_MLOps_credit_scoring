@@ -1,13 +1,22 @@
 import re
 import numpy as np
 import pandas as pd
+import config
+import mlflow
+
+from typing import (
+    Any,
+    Dict,
+    Union,
+    List,
+)
 
 from sklearn.model_selection import (
     KFold,
     StratifiedKFold,
     train_test_split,
+    cross_val_predict
 )
-
 from sklearn.metrics import (
     confusion_matrix,
     make_scorer,
@@ -21,7 +30,6 @@ from sklearn.metrics import (
 from imblearn.metrics import geometric_mean_score
 
 import logging
-
 logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger(__name__)
 
@@ -219,7 +227,6 @@ def make_folds(stratified=True):
 ########################################################################
 ### Define some metrics and Scorers
 ########################################################################
-
 class Scorer:
     
     def __init__(
@@ -255,7 +262,6 @@ class Scorer:
                 y_true,
                 threshold_class_from_proba(proba_pred, threshold=t)    
             )
-            
         if self.greater_is_better:
             best_score = np.max(scores)
             best_threshold = thresholds[np.argmax(scores)]  
@@ -327,16 +333,199 @@ my_Scorers = [
     
     
 def make_mlflow_metrics(scorers, y_true, proba):
-    params = {}
+    """ From the probability of being in the positive class and for each
+    Scorer in scorers:
+    
+    - Search the best threshold to optimize the Scorer metric.
+    - Add the best threshold and the best score to the returned
+    dictionary.
+    
+    ARGS:
+    scorers : A list of Scorers.
+    y_true : True labels
+    proba : same shape as y_true (probability predictions of being
+    in the positive class.)
+    """
+    metrics = {}
     for scorer in scorers:
         (
-            params[f'best_threshold_{scorer.name}'],
-            params[f'best_score_{scorer.name}']
+            metrics[f'threshold_{scorer.name}'],
+            metrics[f'{scorer.name}']
         ) = scorer.find_best_threshold_and_score(y_true, proba)
-    return params
+    return metrics
 
 
+########################################################################
+# Inspired from https://www.phdata.io/blog/bayesian-hyperparameter-optimization-with-mlflow/
+# functions for hyperparameter tuning with hyperopt using mlflow tracking and Cross-validation.
+# How fmin works: https://github.com/hyperopt/hyperopt/wiki/FMin
+#
+########################################################################
+# CROSS-VALIDATION
+########################################################################
+# def predict_proba(model, X, cv):
+#     return cross_val_predict(model, X, cv, method='predict_proba')
 
+########################################################################
+# fmin needs an objective function which :
+#   - takes a set of hyperparameters
+#   - return a value or dictionary with a value which is to be minimized.
+# Below, I chose to return only the relevant value.
+########################################################################
+def objective_adjusted_to_data_and_model(
+    x_train: Union[pd.DataFrame, np.array],
+    y_train: Union[pd.Series, np.array],
+    x_test: Union[pd.DataFrame, np.array],
+    y_test: Union[pd.Series, np.array],
+    cv,
+    model,
+    scorers: List[Scorer],
+    optimization_scorer: Scorer,
+    mlflow_tags: Dict[str, str]=None,
+):
+    """ This is a wrapper. Build the Hyperopt objective function 
+    for :
+    - a given dataset,
+    - a given model,
+    - a given evaluation metric to be optimized among those computed.    
+
+    Args:
+      x_train: feature matrix for training/CV data
+      y_train: label array for training/CV data
+      x_test: feature matrix for test data
+      y_test: label array for test data
+      model: Estimator to be set with the hyperparams returned by hyperopt
+      scorers : A list of Scorers (class created for this project)
+      optimization_scorer: the scorer which computes the metric to be optimized
+
+    Returns:
+        Objective function set up to take hyperparams dict from Hyperopt.
+    """
+
+    def objective(hyperparams):
+        """Extract the loss from a model fit multiple times on CV-folds
+        with the hyperparams configuration.
+        
+        While building the objective function, 
+        the make_cv_predictions_evaluate_and_log() function takes care
+        to track the model with MLflow nested runs.
+        """
+        metrics = make_cv_predictions_evaluate_and_log(
+            x_train,
+            y_train,
+            x_test,
+            y_test,
+            cv,
+            model,
+            model_params=hyperparams,
+            scorers=scorers,
+            mlflow_tags=mlflow_tags,
+            nested=True,
+        )
+        
+        # Extract the optimization metric and modify it (sign + or -)
+        # to ensure the value is to be minimized.
+        opt_metric_name = f"CV_{optimization_scorer.name}"
+        if optimization_scorer.greater_is_better:
+            evaluation_metric = -metrics[opt_metric_name]
+        else:
+            evaluation_metric = metrics[opt_metric_name]
+            
+        return {'status': hyperopt.STATUS_OK, 'loss': opt_metric_name}
+    return objective
+
+
+def make_cv_predictions_evaluate_and_log(
+    x_train: Union[pd.DataFrame, np.array],
+    y_train: Union[pd.Series, np.array],
+    x_test: Union[pd.DataFrame, np.array],
+    y_test: Union[pd.Series, np.array],
+    cv,
+    model,
+    model_params: Dict[str, Any],
+    scorers: List[Scorer],
+    mlflow_tags: Dict[str, str],
+    nested: bool = False
+) -> Dict[str, Any]:
+    """ 
+    1) Instantiate a model with model_params.
+    2) Make prediction (default to predict_proba) on the CV-folds 
+    using cross_val_predict (fitting several models on folds combinations)
+    3) Compute best threshold and score for each scorer on the out-of-fold prediction.
+    4) Fit on the training set and compute metrics on the testing set.
+    5) Log to MLflow
+    6) Return all metrics.
+    
+    Args:
+        x_train: feature matrix for training/CV data
+        y_train: label array for training/CV data
+        x_test: feature matrix for test data
+        y_test: label array for test data
+        cv: a sklearn cross-validation iterator on folds.
+        model: a classifier
+        model_params: the non-default parameters of the model
+        scorers: a list of Scorer used for evaluation and finding the best 
+        threshold from the probability prediction.
+        nested: if true, mlflow run will be started as child
+        of existing parent
+    """
+    with mlflow.start_run(nested=nested) as run:
+        # Instantiate the model
+        model = model.set_params(**model_params)
+        
+        # Work on cross-validation folds.
+        # Fit models and extract the probability of being in the
+        # positive class (out-of-fold prediction is used underneath).
+        proba_pos_cv = cross_val_predict(
+            model, x_train, y_train,
+            cv=cv,
+            method='predict_proba',
+        )[:, 1]
+        # Search best threshold and score for each scorer
+        metrics_= make_mlflow_metrics(scorers, y_train, proba_pos_cv)
+        metrics_cv = {
+           "CV_"+k: v for (k, v) in metrics_.items()
+        }
+        
+        # Fit on the whole training set and evaluate on the testing set 
+        # in order to assess under/over-fitting.
+        model.fit(x_train, y_train)
+        proba_pos_test = model.predict_proba(x_test)[:, 1]
+        metrics_= make_mlflow_metrics(scorers, y_test, proba_pos_test)
+        metrics_test = {
+           "test_"+k: v 
+           for (k, v) in metrics_.items()
+        }
+        
+        metrics = {**metrics_test, **metrics_cv}
+        # MLflow tracking
+        mlflow.log_params(model_params)
+        mlflow.log_metrics(metrics)
+        if mlflow_tags is not None:
+            mlflow_set_tags(mlflow_tags)
+        return metrics
+
+
+# def log_best(run: mlflow.entities.Run, metric: str) -> None:
+#     """Log the best parameters from optimization to the parent experiment.
+
+#     Args:
+#         run: current run to log metrics
+#         metric: name of metric to select best and log
+#     """
+#     client = mlflow.tracking.MlflowClient()
+#     runs = client.search_runs(
+#         [run.info.experiment_id],
+#         "tags.mlflow.parentRunId = '{run_id}' ".format(run_id=run.info.run_id)
+#     )
+
+#     best_run = min(runs, key=lambda run: run.data.metrics[metric])
+
+#     mlflow.set_tag("best_run", best_run.info.run_id)
+#     mlflow.log_metric(f"best_{metric}", best_run.data.metrics[metric])
+    
+    
+    
 # def display_confusion_matrix(y_true, y_pred):
     
 #     cm = confusion_matrix(y_true, y_pred)
