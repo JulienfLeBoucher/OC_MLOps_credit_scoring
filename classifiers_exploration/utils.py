@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import config
 import mlflow
+import hyperopt
 
 from typing import (
     Any,
@@ -26,8 +27,6 @@ from sklearn.metrics import (
     recall_score,
     fbeta_score,
 )
-
-from imblearn.metrics import geometric_mean_score
 
 import logging
 logging.basicConfig(level=logging.WARN)
@@ -136,7 +135,7 @@ def prepare_intrinsic_selected_features(
     )
     # Keep selected features.
     X = X.loc[:, sel_fts_intrinsic]
-    print(f'Kept only the intrinsic selected feature: {X.shape}')
+    print(f'Kept only the feature selection from lightgbm: {X.shape}')
     # Remove 2 individuals with inf values.
     inf_mask = ((X == np.inf) | (X ==-np.inf)).any(axis=1)
     X = X.loc[~inf_mask, :]
@@ -144,7 +143,7 @@ def prepare_intrinsic_selected_features(
     return X, y
 
 
-def prepare_and_impute_intrinsic_selected_features(
+def prepare_and_impute_features_from_lightgbm(
     data_path: str,
     drop_NAN: bool=False,
     drop_INF: bool=False,
@@ -332,7 +331,7 @@ my_Scorers = [
 ]
     
     
-def make_mlflow_metrics(scorers, y_true, proba):
+def compute_scorers_best_threshold_and_score(scorers, y_true, proba):
     """ From the probability of being in the positive class and for each
     Scorer in scorers:
     
@@ -381,6 +380,7 @@ def objective_adjusted_to_data_and_model(
     model,
     scorers: List[Scorer],
     optimization_scorer: Scorer,
+    exp_id: str='0',
     mlflow_tags: Dict[str, str]=None,
 ):
     """ This is a wrapper. Build the Hyperopt objective function 
@@ -420,6 +420,7 @@ def objective_adjusted_to_data_and_model(
             model_params=hyperparams,
             scorers=scorers,
             mlflow_tags=mlflow_tags,
+            exp_id=exp_id,
             nested=True,
         )
         
@@ -431,7 +432,7 @@ def objective_adjusted_to_data_and_model(
         else:
             evaluation_metric = metrics[opt_metric_name]
             
-        return {'status': hyperopt.STATUS_OK, 'loss': opt_metric_name}
+        return {'status': hyperopt.STATUS_OK, 'loss': evaluation_metric}
     return objective
 
 
@@ -445,6 +446,7 @@ def make_cv_predictions_evaluate_and_log(
     model_params: Dict[str, Any],
     scorers: List[Scorer],
     mlflow_tags: Dict[str, str],
+    exp_id: str,
     nested: bool = False
 ) -> Dict[str, Any]:
     """ 
@@ -453,7 +455,7 @@ def make_cv_predictions_evaluate_and_log(
     using cross_val_predict (fitting several models on folds combinations)
     3) Compute best threshold and score for each scorer on the out-of-fold prediction.
     4) Fit on the training set and compute metrics on the testing set.
-    5) Log to MLflow
+    5) Log to exp_id folder in MLflow
     6) Return all metrics.
     
     Args:
@@ -469,7 +471,7 @@ def make_cv_predictions_evaluate_and_log(
         nested: if true, mlflow run will be started as child
         of existing parent
     """
-    with mlflow.start_run(nested=nested) as run:
+    with mlflow.start_run(experiment_id=exp_id, nested=nested) as run:
         # Instantiate the model
         model = model.set_params(**model_params)
         
@@ -482,7 +484,11 @@ def make_cv_predictions_evaluate_and_log(
             method='predict_proba',
         )[:, 1]
         # Search best threshold and score for each scorer
-        metrics_= make_mlflow_metrics(scorers, y_train, proba_pos_cv)
+        metrics_= compute_scorers_best_threshold_and_score(
+            scorers,
+            y_train,
+            proba_pos_cv
+        )
         metrics_cv = {
            "CV_"+k: v for (k, v) in metrics_.items()
         }
@@ -491,7 +497,11 @@ def make_cv_predictions_evaluate_and_log(
         # in order to assess under/over-fitting.
         model.fit(x_train, y_train)
         proba_pos_test = model.predict_proba(x_test)[:, 1]
-        metrics_= make_mlflow_metrics(scorers, y_test, proba_pos_test)
+        metrics_= compute_scorers_best_threshold_and_score(
+            scorers,
+            y_test,
+            proba_pos_test
+        )
         metrics_test = {
            "test_"+k: v 
            for (k, v) in metrics_.items()
@@ -502,27 +512,27 @@ def make_cv_predictions_evaluate_and_log(
         mlflow.log_params(model_params)
         mlflow.log_metrics(metrics)
         if mlflow_tags is not None:
-            mlflow_set_tags(mlflow_tags)
+            mlflow.set_tags(mlflow_tags)
         return metrics
 
 
-# def log_best(run: mlflow.entities.Run, metric: str) -> None:
-#     """Log the best parameters from optimization to the parent experiment.
+def log_best(run: mlflow.entities.Run, metric: str) -> None:
+    """Log the best parameters from optimization to the parent experiment.
 
-#     Args:
-#         run: current run to log metrics
-#         metric: name of metric to select best and log
-#     """
-#     client = mlflow.tracking.MlflowClient()
-#     runs = client.search_runs(
-#         [run.info.experiment_id],
-#         "tags.mlflow.parentRunId = '{run_id}' ".format(run_id=run.info.run_id)
-#     )
+    Args:
+        run: current run to log metrics
+        metric: name of metric to select best and log
+    """
+    client = mlflow.tracking.MlflowClient()
+    runs = client.search_runs(
+        [run.info.experiment_id],
+        "tags.mlflow.parentRunId = '{run_id}' ".format(run_id=run.info.run_id)
+    )
 
-#     best_run = min(runs, key=lambda run: run.data.metrics[metric])
+    best_run = min(runs, key=lambda run: run.data.metrics[metric])
 
-#     mlflow.set_tag("best_run", best_run.info.run_id)
-#     mlflow.log_metric(f"best_{metric}", best_run.data.metrics[metric])
+    mlflow.set_tag("best_run", best_run.info.run_id)
+    mlflow.log_metric(f"best_{metric}", best_run.data.metrics[metric])
     
     
     
