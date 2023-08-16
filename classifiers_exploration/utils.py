@@ -79,8 +79,11 @@ def prepare_data(
     predictors = [feat for feat in data.columns if feat not in not_predictors]
     
     if n_sample:
-        print(f">>> Sampling : {n_sample} random samples.")
-        data = data.sample(n_sample)
+        print(
+            f">>> Sampling with a fixed random state : {n_sample}"
+            "random samples."
+        )
+        data = data.sample(n_sample, random_state=2)
 
     print(
         "Data shape: {}, target shape: {}"
@@ -136,7 +139,7 @@ def prepare_intrinsic_selected_features(
     # Keep selected features.
     X = X.loc[:, sel_fts_intrinsic]
     print(f'Kept only the feature selection from lightgbm: {X.shape}')
-    # Remove 2 individuals with inf values.
+    # Remove possible individuals with inf values.
     inf_mask = ((X == np.inf) | (X ==-np.inf)).any(axis=1)
     X = X.loc[~inf_mask, :]
     y = y[~inf_mask]
