@@ -123,7 +123,7 @@ sel_fts_intrinsic = [
 ]
 
 
-def prepare_intrinsic_selected_features(
+def prepare_features_from_lightgbm(
     data_path: str,
     drop_NAN: bool=False,
     drop_INF: bool=False,
@@ -139,7 +139,7 @@ def prepare_intrinsic_selected_features(
     # Keep selected features.
     X = X.loc[:, sel_fts_intrinsic]
     print(f'Kept only the feature selection from lightgbm: {X.shape}')
-    # Remove possible individuals with inf values.
+    # Remove the 2 individuals with inf values.
     inf_mask = ((X == np.inf) | (X ==-np.inf)).any(axis=1)
     X = X.loc[~inf_mask, :]
     y = y[~inf_mask]
@@ -153,7 +153,7 @@ def prepare_and_impute_features_from_lightgbm(
     n_sample: int=None,
 ) -> tuple[pd.DataFrame, pd.Series]:
     # Get the features and target of individuals with a target.
-    X, y = prepare_intrinsic_selected_features(
+    X, y = prepare_features_from_lightgbm(
         data_path=data_path,
         drop_INF=drop_NAN,
         drop_NAN=drop_INF,
@@ -315,26 +315,30 @@ def loss_of_income_score(y_true, y_pred, fn_weight=5):
     return fn_weight*fn + fp
    
             
-# Define my list of Scorers       
+# Define a dict of Scorers       
 # I commented some scorers for time economy. 
-my_Scorers = [
+my_Scorers = {
     # Scorer('Accuracy', accuracy_score),
-    Scorer('AUC', roc_auc_score),
+    'AUC': Scorer('AUC', roc_auc_score),
     # Scorer('f1', fbeta_score, score_kwargs={'beta': 1}),
-    Scorer('f2', fbeta_score, score_kwargs={'beta': 2}),
-    Scorer(
+    'f2': Scorer('f2', fbeta_score, score_kwargs={'beta': 2}),
+    'recall_specificity_G_mean': Scorer(
         'recall_specificity_G_mean',
         weighted_geometric_mean_score,
     ),
-    Scorer(
+    'loss_of_income' : Scorer(
         'loss_of_income',
         loss_of_income_score,
         greater_is_better=False
     ),
-]
+}
     
     
-def compute_scorers_best_threshold_and_score(scorers, y_true, proba):
+def compute_scorers_best_threshold_and_score(
+    scorers: Dict[str, Scorer],
+    y_true,
+    proba
+):
     """ From the probability of being in the positive class and for each
     Scorer in scorers:
     
@@ -343,13 +347,13 @@ def compute_scorers_best_threshold_and_score(scorers, y_true, proba):
     dictionary.
     
     ARGS:
-    scorers : A list of Scorers.
+    scorers : A dict of Scorers.
     y_true : True labels
     proba : same shape as y_true (probability predictions of being
     in the positive class.)
     """
     metrics = {}
-    for scorer in scorers:
+    for scorer_key, scorer in scorers.items():
         (
             metrics[f'threshold_{scorer.name}'],
             metrics[f'{scorer.name}']
@@ -381,7 +385,7 @@ def objective_adjusted_to_data_and_model(
     y_test: Union[pd.Series, np.array],
     cv,
     model,
-    scorers: List[Scorer],
+    scorers: Dict[str, Scorer],
     optimization_scorer: Scorer,
     exp_id: str='0',
     mlflow_tags: Dict[str, str]=None,
@@ -400,6 +404,9 @@ def objective_adjusted_to_data_and_model(
       model: Estimator to be set with the hyperparams returned by hyperopt
       scorers : A list of Scorers (class created for this project)
       optimization_scorer: the scorer which computes the metric to be optimized
+      exp_id: An mlflow experiment id to ensure logs of nested runs are in
+      the right place.
+      mlflow_tags: to be added to all nested runs.
 
     Returns:
         Objective function set up to take hyperparams dict from Hyperopt.
@@ -447,7 +454,7 @@ def make_cv_predictions_evaluate_and_log(
     cv,
     model,
     model_params: Dict[str, Any],
-    scorers: List[Scorer],
+    scorers: Dict[str, Scorer],
     mlflow_tags: Dict[str, str],
     exp_id: str,
     nested: bool = False
@@ -555,7 +562,9 @@ def log_best(run: mlflow.entities.Run, metric: str) -> None:
 #     print('Total Fraudulent Transactions: ', np.sum(cm[1]))
 
     
-
+def experiment_id_from_experiment_name(experiment_name):
+    experiment=dict(mlflow.get_experiment_by_name(experiment_name))
+    return experiment['experiment_id'] 
 
 
 
