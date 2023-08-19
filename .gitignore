@@ -6,3 +6,4 @@ pickle_files/**
 .python-version
 classifiers_exploration/*.gz
 **/mlruns/**
+mentorat.md
