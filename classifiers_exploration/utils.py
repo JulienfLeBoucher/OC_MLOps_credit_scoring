@@ -1,9 +1,11 @@
 import re
+import gc
 import numpy as np
 import pandas as pd
 import config
 import mlflow
 import hyperopt
+import time
 
 from typing import (
     Any,
@@ -18,6 +20,10 @@ from sklearn.model_selection import (
     train_test_split,
     cross_val_predict
 )
+from sklearn.impute import (
+    KNNImputer,
+    SimpleImputer,
+)
 from sklearn.metrics import (
     confusion_matrix,
     make_scorer,
@@ -26,6 +32,12 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     fbeta_score,
+)
+from sklearn.preprocessing import(
+    OneHotEncoder,
+    StandardScaler,
+    PowerTransformer,
+    MinMaxScaler,
 )
 
 import logging
@@ -166,6 +178,382 @@ def prepare_and_impute_features_from_lightgbm(
     return X, y
 
 
+def load_split_clip_scale_and_impute_data(
+    data_path: str,
+    predictors: List[str]=None, 
+    n_sample: int=None,
+    ohe: bool=False,
+    clip: bool=False,
+    scaling_method: str=None,
+    imputation_method: str='zero',
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, Dict[str, Any]]:
+    """ 
+    - Read the pickle file.
+    - Retain individuals with a known target value.
+    - Filter individuals with little information.
+    - Eventually select a set of predictors and ensure predictors are valid.
+    - Eventually sample.
+    - Split into train and test sets. 
+    For categorical features
+    - Impute with the closest neighbor the label encoded value provided.
+    - One hot encode categorical features or not.
+    For numerical features :
+    - Filter inf and outliers values by clipping (based on the train set).
+    - Scale (based on the train set)
+    - Impute (based on the train set).
+    
+    
+    Args:
+    
+    Return X_train, X_test, y_train, y_test, A dictionary with pre-processors
+    
+    TODO : If I want to reuse that in another project, it could be nice
+    to implement a choice between a removal of the outliers and a clipping.
+    
+    TODO : A transformer to clip the value should be implemented if I want it to
+    be part of the pre-processing pipeline of a future individual. 
+    """
+    # Read the pickle file (previously merged features from Aguiar's script)
+    try:
+        t0 = time.time()
+        print(">>> Read the pickle file")
+        data = pd.read_pickle(data_path)
+        print(f"It took {time.time()-t0:.3f}s")
+    except Exception as e:
+        logger.exception(
+                """Unable to load features. 
+                Check the config FEATURE_PATH.
+                Error: %s", e"""
+        )
+    # Retain individuals with target
+    data = data[data['TARGET'].notnull()]    
+    # Keep individuals with decent information
+    data = keep_individuals_with_info(data, threshold=400)
+    # Build predictors list if not passed as parameter
+    # and filter non-valid predictors
+    if predictors is None:
+        predictors = list(data.columns)
+    else:
+        pass
+    
+    not_predictors = [
+        'TARGET',
+        'SK_ID_CURR',
+        'SK_ID_BUREAU',
+        'SK_ID_PREV',
+        'index',
+        'level_0',
+    ]
+    predictors = [feat for feat in predictors if feat not in not_predictors]
+    # Extract selected data
+    data = data[[*predictors, 'TARGET']]
+    # Get categorical and numerical feature names among selected predictors
+    initial_categorical_features = [
+        'CODE_GENDER', 'FLAG_OWN_CAR', 'NAME_CONTRACT_TYPE',
+        'NAME_EDUCATION_TYPE', 'NAME_FAMILY_STATUS', 'NAME_HOUSING_TYPE',
+        'NAME_INCOME_TYPE', 'OCCUPATION_TYPE', 'ORGANIZATION_TYPE',
+        'WEEKDAY_APPR_PROCESS_START', 
+    ]
+    categorical_features = [
+        ft for ft in predictors if ft in initial_categorical_features
+    ]
+    numerical_features = [
+        ft for ft in predictors if ft not in initial_categorical_features
+    ]
+    # Print data shape
+    print(
+        ">>> Feature selection :"
+        "   Data shape: {}, target shape: {}"
+        .format(data[predictors].shape, data['TARGET'].shape)
+    )
+    # It is a trick but I am fitting the ohe_enc before sampling 
+    # to ensure it knows about all categories (some could be missing
+    # if n_samples is low).
+    ohe_enc = OneHotEncoder()
+    ohe_enc.fit(data[categorical_features])
+    # Eventually sample
+    if n_sample:
+        print(
+            f">>> Sampling with a fixed random state : {n_sample}"
+            " random samples."
+        )
+        data = data.sample(n_sample, random_state=2)
+    # Split into train and test sets
+    X_train, X_test, y_train, y_test = split_data(
+        X=data[predictors],
+        y=data['TARGET']
+    )
+    
+    ################################################################
+    # Process categorical features based on the X_train information.
+    ################################################################
+    # Imputation (Use 1NN imputer on LE categorical features)
+    cat_imputer = KNNImputer(n_neighbors=1)
+    cat_imputer.fit(X_train[categorical_features])
+    X_train.loc[:, categorical_features] = (
+        cat_imputer.transform(X_train[categorical_features])
+    )
+    X_test.loc[:, categorical_features] = (
+        cat_imputer.transform(X_test[categorical_features])
+    )
+    if ohe:
+        print(">>> One-hot encoding categorical features")
+        # One-hot encode categorical features
+        ohe_train = pd.DataFrame.sparse.from_spmatrix(
+            ohe_enc.transform(X_train[categorical_features]),
+            index=X_train.index,
+            columns=ohe_enc.get_feature_names_out()
+        )
+        ohe_test = pd.DataFrame.sparse.from_spmatrix(
+            ohe_enc.transform(X_test[categorical_features]),
+            index=X_test.index,
+            columns=ohe_enc.get_feature_names_out()
+        )
+        # Replace raw categorical by joining numerical and ohe
+        # categorical features
+        X_train = pd.concat(
+            [X_train[numerical_features], ohe_train],
+            axis=1,
+        )
+        X_test = pd.concat(
+            [X_test[numerical_features], ohe_test],
+            axis=1,
+        )
+        # Update feature names
+        categorical_features = ohe_enc.get_feature_names_out()
+        predictors = [*numerical_features, *categorical_features]
+    ##############################################################
+    # Process numerical features based on the X_train information.
+    ##############################################################
+    if clip:
+        print(">>> Clipping inf and outliers values")
+        # Find boundaries to clip values observing only the train set
+        boundaries = define_boundaries_for_numerical_features(
+            X_train[numerical_features]
+        )
+        # Clip values in the train set
+        X_train.loc[:, numerical_features] = clip_with_boundaries(
+            X_train[numerical_features], 
+            boundaries
+        )
+        # Clip values in the test set with a slight tolerance (10%) if values are 
+        # out of the boundaries.
+        X_test.loc[:, numerical_features] = clip_with_boundaries(
+            X_test[numerical_features], 
+            boundaries * 1.1
+        )
+    # If a scaling method is specified, fit the scaler on the train set and
+    # transform both train and test set.
+    if scaling_method is not None:
+        print(f">>> Start Scaling : {scaling_method}")
+        t0 = time.time()
+        match scaling_method:
+            case 'minmax':
+                scaler = MinMaxScaler()
+                X_train.loc[:, numerical_features] = (
+                    scaler
+                    .fit_transform(X_train[numerical_features])
+                )
+                X_test.loc[:, numerical_features] = (
+                    scaler
+                    .transform(X_test[numerical_features])
+                )
+            case 'standard':
+                scaler = StandardScaler()
+                X_train.loc[:, numerical_features] = (
+                    scaler
+                    .fit_transform(X_train[numerical_features])
+                )
+                X_test.loc[:, numerical_features] = (
+                    scaler
+                    .transform(X_test[numerical_features])
+                )
+            case 'power_transform':
+                scaler = PowerTransformer()
+                X_train.loc[:, numerical_features] = (
+                    scaler
+                    .fit_transform(X_train[numerical_features])
+                )
+                X_test.loc[:, numerical_features] = (
+                    scaler
+                    .transform(X_test[numerical_features])
+                )
+            case _:
+                print('No scaling was done because the specified method is not'
+                      ' implemented/recognized.\nPlease specify a method among'
+                      ' "minmax", "standard", "power_transform".')
+        print(f'Scaling completed in {time.time()-t0:.3f}s')
+    else:
+        print('>>> No Scaling')
+    # Imputation
+    if imputation_method is not None:
+        (
+            X_train.loc[:, numerical_features],
+            X_test.loc[:, numerical_features],
+            num_imputer
+        ) = impute(
+            X_train.loc[:, numerical_features],
+            X_test.loc[:, numerical_features],
+            method=imputation_method
+        )
+    return (
+        X_train,
+        X_test,
+        y_train,
+        y_test,
+        {
+            'categorical_imputer': cat_imputer,
+            'one_hot_encoder': ohe_enc,   
+            'boundaries': boundaries,
+            'numerical_scaler': scaler,
+            'numerical_imputer': num_imputer,
+        }
+    )
+    
+
+
+def keep_individuals_with_info(data, threshold=400):
+    """ Remove individuals with more than `threshold` null values.
+    
+    The default value of 400 is based on the histogram of null values per
+    individual."""
+    print(f">>> Filtering individual with more than {threshold} values")
+    print(f"before : {len(data)}")
+    mask = (data.isnull().sum(axis=1) > 400)
+    df = data.copy().loc[~mask, :]
+    print(f"after : {len(df)}")
+    del data
+    gc.collect()
+    return df
+
+
+def define_boundaries_for_numerical_features(
+    num_df: pd.DataFrame,
+    q_lower: float=0.1,
+    q_upper: float=99.9,
+)-> pd.DataFrame:
+    
+    """
+    Search for the q_lower and the q_upper percentile in num_df
+    (without considering inf values nor nan values).
+    
+    Note : This must not be applied on categorical features but only on
+    a dataframe with numerical features.
+    
+    Return : A dataframe which indexes correspond to numerical features and
+    columns are the associated low and high percentiles q_lower and q_upper."""    
+    # Made a Series of a high percentile for each numerical feature
+    high_percentiles = (
+        num_df
+        .replace(np.inf, np.NaN)
+        .apply(np.nanpercentile, q=q_upper, axis=0)
+    )
+    high_percentiles.name = "high_percentiles"
+    # Made a Series of a low percentile for each numerical feature
+    low_percentiles = (
+        num_df
+        .replace(-np.inf, np.NaN)
+        .apply(np.nanpercentile, q=q_lower, axis=0)
+    )
+    low_percentiles.name = "low_percentiles"
+    # Concatenate boundaries and clip values with both boundaries
+    boundaries = pd.concat([low_percentiles, high_percentiles], axis=1)
+    return boundaries
+
+
+def clip_with_boundaries(
+    df: pd.DataFrame,
+    boundaries: pd.DataFrame
+)-> pd.DataFrame:
+    """In order to filter inf and -inf values and, by the way, filter outliers
+    Values are clipped between boundaries. df must be numerical."""
+    clipped_df = (
+        df
+        .loc[:, list(boundaries.index)]
+        .clip(
+            lower=boundaries.low_percentiles,
+            upper=boundaries.high_percentiles,
+            axis=1,
+        )
+    )
+    del df
+    gc.collect()
+    return clipped_df
+
+
+def impute(X_train, X_test, method='median'):
+    """Fit imputer on X_train and transform X_train and X_test
+    
+    Return (X_train_imp, X_test_imp, imp) where imp is the fit imputer.
+    
+    
+    --> Problem : This is ok if used on the training set to produce the
+    final model and extract the imputer to pre-process individual to be inferred.
+    But if done previously to the cross-validation, there will be
+    some data leakage.
+    
+    Note : https://arxiv.org/abs/2010.00718
+    
+    This article shows that practically, it is often NOT very important to
+    proceed imputation on each CV run, and that imputation, which has a very
+    high computational cost can be done before cross-validation.
+    
+    That's why, I will impute the full training set before CV, and use
+    the fit imputer on the testing set to keep a measurement of that leakage
+    wrt scores on the CV.
+    
+    """
+    t0 = time.time()
+    match method:
+        case 'median':
+            print(f'>>> Imputation with {method}')
+            imp = SimpleImputer(strategy='median')
+            imp.fit(X_train)
+            t1 = time.time()
+            fit_duration = t1 - t0
+            print(f"Imputer fit duration: {fit_duration:.3f}s")
+            X_train_imp = imp.transform(X_train)
+            X_test_imp = imp.transform(X_test)
+            t2 = time.time()
+            imputation_duration = t2 - t1
+            print(f"Imputation duration: {imputation_duration:.3f}s")
+        case 'knn':
+            knn_n_neighbors=2
+            print(f'>>> Imputation with {method} -- k={knn_n_neighbors}')
+            imp = KNNImputer(n_neighbors=knn_n_neighbors)
+            imp.fit(X_train)
+            t1 = time.time()
+            fit_duration = t1 - t0
+            print(f"Imputer fit duration: {fit_duration:.3f}s")
+            X_train_imp = imp.transform(X_train)
+            X_test_imp = imp.transform(X_test)
+            t2 = time.time()
+            imputation_duration = t2 - t1
+            print(f"Imputation duration: {imputation_duration:.3f}s")
+        case 'zero':
+            print(f'>>> Imputation with {method}')
+            imp = SimpleImputer(strategy='constant', fill_value=0)
+            imp.fit(X_train)
+            t1 = time.time()
+            fit_duration = t1 - t0
+            print(f"Imputer fit duration: {fit_duration:.3f}s")
+            X_train_imp = imp.transform(X_train)
+            X_test_imp = imp.transform(X_test)
+            t2 = time.time()
+            imputation_duration = t2 - t1
+            print(f"Imputation duration: {imputation_duration:.3f}s")
+        case _:
+            print("No imputation was made.")
+    return (X_train_imp, X_test_imp, imp)
+            
+
+# def impute_train_and_test(X_train, X_test, method='median'):
+#     imputer, X_train_imp = impute(X_train, method=method)
+#     X_test_imp = imputer.transform(X_test)
+#     return imputer, X_train_imp, X_test_imp
+    
+    
+    
 def rename_col_for_lgbm_compatibility(df: pd.DataFrame) -> pd.DataFrame:
     # Change columns names ([LightGBM] Do not support special JSON characters in feature name.)
     new_names = {col: re.sub(r'[^A-Za-z0-9_]+', '', col) for col in df.columns}
