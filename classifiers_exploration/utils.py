@@ -417,7 +417,7 @@ def keep_individuals_with_info(data, threshold=400):
     
     The default value of 400 is based on the histogram of null values per
     individual."""
-    print(f">>> Filtering individual with more than {threshold} values")
+    print(f">>> Filtering individual with more than {threshold} null values")
     print(f"before : {len(data)}")
     mask = (data.isnull().sum(axis=1) > 400)
     df = data.copy().loc[~mask, :]
@@ -767,9 +767,9 @@ def compute_scorers_best_threshold_and_score(
 # Below, I chose to return only the relevant value.
 ########################################################################
 def objective_adjusted_to_data_and_model(
-    x_train: Union[pd.DataFrame, np.array],
+    X_train: Union[pd.DataFrame, np.array],
     y_train: Union[pd.Series, np.array],
-    x_test: Union[pd.DataFrame, np.array],
+    X_test: Union[pd.DataFrame, np.array],
     y_test: Union[pd.Series, np.array],
     cv,
     model,
@@ -785,9 +785,9 @@ def objective_adjusted_to_data_and_model(
     - a given evaluation metric to be optimized among those computed.    
 
     Args:
-      x_train: feature matrix for training/CV data
+      X_train: feature matrix for training/CV data
       y_train: label array for training/CV data
-      x_test: feature matrix for test data
+      X_test: feature matrix for test data
       y_test: label array for test data
       model: Estimator to be set with the hyperparams returned by hyperopt
       scorers : A list of Scorers (class created for this project)
@@ -809,9 +809,9 @@ def objective_adjusted_to_data_and_model(
         to track the model with MLflow nested runs.
         """
         metrics = make_cv_predictions_evaluate_and_log(
-            x_train,
+            X_train,
             y_train,
-            x_test,
+            X_test,
             y_test,
             cv,
             model,
