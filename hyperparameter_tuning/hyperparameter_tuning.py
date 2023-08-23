@@ -55,8 +55,8 @@ print('>>>>>> Load and pre-process <<<<<<\n')
 # Derived a set of parameters to create the objective function that does 
 # not depend on the model type but rather on input datasets and scorers.
 fixed_params = dict(
-    X_train=X_train_pp.sparse.to_dense(), #sparse.to_dense() optional.
-    X_test=X_test_pp.sparse.to_dense(),
+    X_train=X_train_pp,
+    X_test=X_test_pp,
     y_train=y_train,
     y_test=y_test,
     cv=utils.make_folds(stratified=stratified_folds),
