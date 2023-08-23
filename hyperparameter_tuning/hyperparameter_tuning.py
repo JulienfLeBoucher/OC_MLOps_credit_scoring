@@ -4,6 +4,18 @@
 # hyperopt(with regard to an optimization Scorer) using cross-validation.
 # 
 # GOAL : compare model and choose the one to fine-tune.
+#
+# You can launch the script with python or with the `mlflow run` command. 
+
+# In the latter case, some bugs occurs naturally when passing arguments to
+# mlflow.start_run().
+
+# To avoid that, pass the --experiment_name "..." as provided above in
+# that file. https://github.com/mlflow/mlflow/issues/2735
+# 
+# To avoid another problem with the parent_run_name, a workaround
+# suggested here is used : 
+# https://github.com/mlflow/mlflow/issues/2804#issuecomment-640056129
 
 import mlflow
 import hyperopt
@@ -14,7 +26,7 @@ import config
 ########################################################################
 # MAIN PARAMETER ZONE
 # MLflow experiment name
-experiment_name = 'all_features_minmax_knn'
+experiment_name = 'all_features_minmax_knn_test2'
 # load_split_clip_scale_and_impute() parameters.
 pre_processing_params = dict(
     predictors=None, 
@@ -35,11 +47,15 @@ models_config = models_config.models_config
 # Create the MLflow experiment if needed.
 # Possible to customize the experiment with the create_experiment
 # method. Also set and get the exp id.
-existing_exp = mlflow.get_experiment_by_name(experiment_name)
-if not existing_exp:
+if mlflow.get_experiment_by_name(experiment_name) is None:
     mlflow.create_experiment(
         experiment_name,
-        # artifact_location="...", can be chosen here
+        artifact_location=config.HYPER_MLRUNS_PATH.as_uri(),
+        tags={
+            'pre_processing': str(pre_processing_params),
+            'stratified_cv': str(stratified_folds),
+            'optimizer': optimization_scorer_name,
+        }
     )
 exp = mlflow.set_experiment(experiment_name)
 exp_id = exp.experiment_id
@@ -76,7 +92,7 @@ for parent_run_name, model_dict in models_config.items():
     fmin_params = model_dict['fmin_params']
     
     print(f'>>>>>> Entering hyperparameter tuning'
-          f'for {parent_run_name} <<<<<<')
+          f' for {parent_run_name} <<<<<<')
     
     objective = utils.objective_adjusted_to_data_and_model(
         **fixed_params,
@@ -88,8 +104,9 @@ for parent_run_name, model_dict in models_config.items():
     # Start the parent run
     with mlflow.start_run(
         experiment_id=exp_id,
-        run_name=parent_run_name
+        #run_name=parent_run_name
     ) as run:
+        mlflow.set_tag("mlflow.runName", f"{parent_run_name}")
         # model hyperparameter tuning
         # space and max_evals are passed through fmin_params
         best_result = hyperopt.fmin(

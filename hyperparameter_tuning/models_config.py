@@ -13,7 +13,7 @@ models_config = {}
 
 # LogisticRegression with L1 regulation
 models_config["Lasso-type Logistic Regression"] = dict(
-    model=LogisticRegression(penalty='l1', max_iter=1_000),
+    model=LogisticRegression(penalty='l1', max_iter=5_000),
     fmin_params = dict(
         space={
             'C': hp.lognormal('C', 0, 1.0),
