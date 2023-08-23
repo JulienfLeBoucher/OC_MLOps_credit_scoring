@@ -269,7 +269,7 @@ def load_split_clip_scale_and_impute_data(
     # It is a trick but I am fitting the ohe_enc before sampling 
     # to ensure it knows about all categories (some could be missing
     # if n_samples is low).
-    ohe_enc = OneHotEncoder()
+    ohe_enc = OneHotEncoder(sparse_output=False, dtype='int32')
     ohe_enc.fit(data[categorical_features])
     # Eventually sample
     if n_sample:
@@ -299,12 +299,12 @@ def load_split_clip_scale_and_impute_data(
     if ohe:
         print(">>> One-hot encoding categorical features")
         # One-hot encode categorical features
-        ohe_train = pd.DataFrame.sparse.from_spmatrix(
+        ohe_train = pd.DataFrame(
             ohe_enc.transform(X_train[categorical_features]),
             index=X_train.index,
             columns=ohe_enc.get_feature_names_out()
         )
-        ohe_test = pd.DataFrame.sparse.from_spmatrix(
+        ohe_test = pd.DataFrame(
             ohe_enc.transform(X_test[categorical_features]),
             index=X_test.index,
             columns=ohe_enc.get_feature_names_out()
