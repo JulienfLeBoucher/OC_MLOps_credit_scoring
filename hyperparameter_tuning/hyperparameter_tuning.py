@@ -3,25 +3,25 @@
 # Track (MLflow) performance of different classifiers while being tuned with
 # hyperopt(with regard to an optimization Scorer) using cross-validation.
 # 
-# GOAL : compare model and choose the one to fine-tune.
+# GOAL: Compare model and choose the one to fine-tune.
 #
-# You can launch the script with python or with the `mlflow run` command. 
+# The script can be launched with python or with the `mlflow run` command. 
 
 # In the latter case, some bugs occurs naturally when passing arguments to
-# mlflow.start_run().
-
-# To avoid that, pass the --experiment_name "..." as provided above in
-# that file. https://github.com/mlflow/mlflow/issues/2735
-# 
-# To avoid another problem with the parent_run_name, a workaround
-# suggested here is used : 
+# mlflow.start_run(). To avoid that:
+# - pass redundantly the --experiment_name "..." to the run command.
+# https://github.com/mlflow/mlflow/issues/2735
+# - a workaround has been implemented directly in the code as suggested here: 
 # https://github.com/mlflow/mlflow/issues/2804#issuecomment-640056129
 
 import mlflow
 import hyperopt
-import utils
-import models_config
+import model_configs
 import config
+import sys
+# Append path to the parent folder to find the project_tools package.
+sys.path.append('../')
+from project_tools import utils
 
 ########################################################################
 # MAIN PARAMETER ZONE
@@ -42,7 +42,16 @@ stratified_folds = True
 scorers = utils.my_Scorers
 optimization_scorer_name = 'loss_of_income'
 # Load models and associated search space + max_evals
-models_config = models_config.models_config
+model_configs = model_configs.model_configs
+# Choose models to be tuned (add/comment/uncomment)
+# Those are the keys of model_configs
+model_names = [
+    # 'Lasso-type Logistic Regression',
+    # 'Rigde-type Logistic Regression',
+    # 'Random Forest',
+    'SVC',
+    # 'LightGBM',
+]
 ########################################################################
 # WARNING: this section only works when the file is run by the python
 # interpreter, otherwise, the mlflow run command does not take that into 
@@ -93,9 +102,9 @@ fixed_params = dict(
 )
 # Loop on models to create the hyperopt objective 
 # and tune hyperparameters.
-for parent_run_name, model_dict in models_config.items():
-    model = model_dict['model']
-    fmin_params = model_dict['fmin_params']
+for parent_run_name in model_names:
+    model = model_configs[parent_run_name]['model']
+    fmin_params = model_configs[parent_run_name]['fmin_params']
     
     print(f'>>>>>> Entering hyperparameter tuning'
           f' for {parent_run_name} <<<<<<')
@@ -104,9 +113,7 @@ for parent_run_name, model_dict in models_config.items():
         **fixed_params,
         model=model,
     )
-    
     trials = hyperopt.Trials()
-
     # Start the parent run
     with mlflow.start_run(
         experiment_id=exp_id,
@@ -114,8 +121,8 @@ for parent_run_name, model_dict in models_config.items():
     ) as run:
         # Workaround line as specified in the incipit
         mlflow.set_tag("mlflow.runName", f"{parent_run_name}")
-        # model hyperparameter tuning
-        # space and max_evals are passed through fmin_params
+        # Model hyperparameter tuning.
+        # space and max_evals are passed through fmin_params.
         best_result = hyperopt.fmin(
             fn=objective,
             algo=hyperopt.tpe.suggest,
