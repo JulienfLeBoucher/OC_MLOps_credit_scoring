@@ -1,0 +1,6 @@
+python: "3.11.4"
+
+dependencies:
+  - -r requirements.txt
+  
+
