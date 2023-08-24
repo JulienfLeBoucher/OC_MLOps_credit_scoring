@@ -280,7 +280,7 @@ def load_split_clip_scale_and_impute_data(
     # Split into train and test sets
     X_train, X_test, y_train, y_test = split_data(
         X=data[predictors],
-        y=data['TARGET']
+        y=data['TARGET'],
     )
     
     ################################################################
@@ -546,13 +546,6 @@ def impute(X_train, X_test, method='median'):
     return (X_train_imp, X_test_imp, imp)
             
 
-# def impute_train_and_test(X_train, X_test, method='median'):
-#     imputer, X_train_imp = impute(X_train, method=method)
-#     X_test_imp = imputer.transform(X_test)
-#     return imputer, X_train_imp, X_test_imp
-    
-    
-    
 def rename_col_for_lgbm_compatibility(df: pd.DataFrame) -> pd.DataFrame:
     # Change columns names ([LightGBM] Do not support special JSON characters in feature name.)
     new_names = {col: re.sub(r'[^A-Za-z0-9_]+', '', col) for col in df.columns}
@@ -756,8 +749,17 @@ def compute_scorers_best_threshold_and_score(
 ########################################################################
 # CROSS-VALIDATION
 ########################################################################
-# def predict_proba(model, X, cv):
-#     return cross_val_predict(model, X, cv, method='predict_proba')
+def predict_proba(model, X, cv, fit_params):
+    if fit_params is not None:
+        return cross_val_predict(
+            model,
+            X,
+            cv,
+            method='predict_proba',
+            fit_params=fit_params
+        )
+    else:
+        return cross_val_predict(model, X, cv, method='predict_proba')
 
 ########################################################################
 # fmin needs an objective function which :
