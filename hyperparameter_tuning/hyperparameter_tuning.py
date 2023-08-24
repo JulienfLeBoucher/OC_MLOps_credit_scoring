@@ -26,11 +26,11 @@ import config
 ########################################################################
 # MAIN PARAMETER ZONE
 # MLflow experiment name
-experiment_name = 'all_features_minmax_knn_test2'
+experiment_name = 'all_features_minmax_knn'
 # load_split_clip_scale_and_impute() parameters.
 pre_processing_params = dict(
     predictors=None, 
-    n_sample=1_000,
+    n_sample=2_000,
     ohe=True,
     clip=True,
     scaling_method='minmax',
@@ -44,21 +44,27 @@ optimization_scorer_name = 'loss_of_income'
 # Load models and associated search space + max_evals
 models_config = models_config.models_config
 ########################################################################
+# WARNING: this section only works when the file is run by the python
+# interpreter, otherwise, the mlflow run command does not take that into 
+# account. 
+#
 # Create the MLflow experiment if needed.
 # Possible to customize the experiment with the create_experiment
 # method. Also set and get the exp id.
 if mlflow.get_experiment_by_name(experiment_name) is None:
     mlflow.create_experiment(
         experiment_name,
-        artifact_location=config.HYPER_MLRUNS_PATH.as_uri(),
+        #artifact_location=...,
         tags={
             'pre_processing': str(pre_processing_params),
             'stratified_cv': str(stratified_folds),
             'optimizer': optimization_scorer_name,
         }
     )
+# mlflow.set_tracking_uri(f"{config.TRACKING_URI}")    
 exp = mlflow.set_experiment(experiment_name)
 exp_id = exp.experiment_id
+########################################################################
 # Load and pre-process data
 print('>>>>>> Load and pre-process <<<<<<\n')
 (
@@ -106,6 +112,7 @@ for parent_run_name, model_dict in models_config.items():
         experiment_id=exp_id,
         #run_name=parent_run_name
     ) as run:
+        # Workaround line as specified in the incipit
         mlflow.set_tag("mlflow.runName", f"{parent_run_name}")
         # model hyperparameter tuning
         # space and max_evals are passed through fmin_params
