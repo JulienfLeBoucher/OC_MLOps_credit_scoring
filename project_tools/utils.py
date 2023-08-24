@@ -2,7 +2,6 @@ import re
 import gc
 import numpy as np
 import pandas as pd
-import config
 import mlflow
 import hyperopt
 import time
@@ -595,21 +594,21 @@ def class_percentages(target):
     return None    
 
 
-def make_folds(stratified=True):
+def make_folds(stratified=True, num_folds=5, random_seed=137):
     """ Return an sklearn Kfold(possibly stratified) cross-validator 
     with a fixed random state to enable comparisons between models.
     """
     if not stratified:
         folds = KFold(
-            n_splits=config.NUM_FOLDS,
+            n_splits=num_folds,
             shuffle=True,
-            random_state=config.RANDOM_SEED
+            random_state=random_seed
         )
     else:
         folds = StratifiedKFold(
-            n_splits=config.NUM_FOLDS,
+            n_splits=num_folds,
             shuffle=True,
-            random_state=config.RANDOM_SEED
+            random_state=random_seed
         )
     return folds
 
@@ -949,11 +948,65 @@ def log_best(run: mlflow.entities.Run, metric: str) -> None:
 #     print('Fraudulent Transactions Detected (True Positives): ', cm[1][1])
 #     print('Total Fraudulent Transactions: ', np.sum(cm[1]))
 
-    
-def experiment_id_from_experiment_name(experiment_name):
-    experiment=dict(mlflow.get_experiment_by_name(experiment_name))
-    return experiment['experiment_id'] 
+def get_run_name_from_run_id(run_id):
+    if run_id is not None:
+        return mlflow.get_run(run_id).info.run_name
+    else:
+        return None
 
+    
+def get_exp_id_from_exp_name(experiment_name):
+    experiment=dict(mlflow.get_experiment_by_name(experiment_name))
+    return experiment['experiment_id']
+
+
+def get_runs_information(
+    exp_id,
+    light_version: bool=False,
+    sort_Scorer: Scorer=my_Scorers['loss_of_income'],
+    metric_prefix: str='CV_',
+)-> pd.DataFrame:
+    """ Return information about all runs made in an experiment."""
+    # get run information and set index to run_id
+    results = mlflow.search_runs(
+        experiment_ids=[exp_id],
+    )   
+    results = results.set_index('run_id')
+    # Add some information
+    results['fit_time_s'] = (
+        (results.end_time - results.start_time).dt.total_seconds()
+    )
+    results['parent_run_name'] = (
+        results['tags.mlflow.parentRunId']
+        .apply(get_run_name_from_run_id)
+    )
+    # Sort depending if we want to maximize or minimize the metric
+    results = (
+        results
+        .sort_values(
+            f'metrics.{metric_prefix + sort_Scorer.name}',
+            ascending=(not sort_Scorer.greater_is_better)
+        )
+    )
+    # 
+    if light_version:
+        metric_sel = [
+            'metrics.CV_AUC',
+            'metrics.CV_loss_of_income',
+            'metrics.CV_f2',
+            'metrics.test_AUC',
+            'metrics.test_loss_of_income',
+            'metrics.test_f2',
+        ]
+        col_sel = [
+            *metric_sel,
+            'fit_time_s',
+            'parent_run_name',
+        ]
+        return results[col_sel]
+    else:
+        return results
+        
 
 
 
