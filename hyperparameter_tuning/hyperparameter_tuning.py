@@ -46,7 +46,7 @@ models_config = models_config.models_config
 ########################################################################
 # WARNING: this section only works when the file is run by the python
 # interpreter, otherwise, the mlflow run command does not take that into 
-# account. 
+# account because it has already created an experiment by default. 
 #
 # Create the MLflow experiment if needed.
 # Possible to customize the experiment with the create_experiment
