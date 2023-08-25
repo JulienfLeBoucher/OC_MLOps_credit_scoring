@@ -690,9 +690,11 @@ def weighted_geometric_mean_score(y_true, y_pred, recall_weight=5):
 def loss_of_income_score(y_true, y_pred, fn_weight=5):
     """ Compute the loss of income due to false negatives
     and false positives over-penalizing false negative with a weight. 
+    
+    Finally normalize by the number of individuals
     """
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-    return fn_weight*fn + fp
+    return (fn_weight*fn + fp) / len(y_true)
    
             
 # Define a dict of Scorers       
