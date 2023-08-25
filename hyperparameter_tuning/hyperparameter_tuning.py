@@ -16,7 +16,7 @@
 
 import mlflow
 import hyperopt
-import model_configs
+import my_hyperopt_estimators
 import config
 import sys
 # Append path to the parent folder to find the project_tools package.
@@ -42,16 +42,10 @@ stratified_folds = True
 scorers = utils.my_Scorers
 optimization_scorer_name = 'loss_of_income'
 # Load models and associated search space + max_evals
-model_configs = model_configs.model_configs
-# Choose models to be tuned (add/comment/uncomment)
-# Those are the keys of model_configs
-model_names = [
-    # 'Lasso-type Logistic Regression',
-    # 'Rigde-type Logistic Regression',
-    # 'Random Forest',
-    'SVC',
-    # 'LightGBM',
-]
+hyperopt_estimators = my_hyperopt_estimators.hyperopt_estimators
+print(f"Models to be tuned :")
+for estimator in hyperopt_estimators:
+    print(f"{estimator.name}")
 ########################################################################
 # WARNING: this section only works when the file is run by the python
 # interpreter, otherwise, the mlflow run command does not take that into 
@@ -98,13 +92,13 @@ fixed_params = dict(
         'pre_processing': str(pre_processing_params),
         'stratified_cv': str(stratified_folds),
         'optimizer': optimization_scorer_name,
-    }
+    },
 )
 # Loop on models to create the hyperopt objective 
 # and tune hyperparameters.
-for parent_run_name in model_names:
-    model = model_configs[parent_run_name]['model']
-    fmin_params = model_configs[parent_run_name]['fmin_params']
+for estimator in hyperopt_estimators:
+    parent_run_name = estimator.name
+    model = estimator.base_estimator
     
     print(f'>>>>>> Entering hyperparameter tuning'
           f' for {parent_run_name} <<<<<<')
