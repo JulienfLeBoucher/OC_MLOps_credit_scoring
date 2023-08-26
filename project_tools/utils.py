@@ -591,8 +591,9 @@ def class_percentages(target):
 
 
 def make_folds(stratified=True, num_folds=5, random_seed=137):
-    """ Return an sklearn Kfold(possibly stratified) cross-validator 
-    with a fixed random state to enable comparisons between models.
+    """ Return an sklearn Kfold(possibly stratified) cross-validation
+    iterator with a fixed random state to enable comparisons between
+    models.
     """
     if not stratified:
         folds = KFold(
@@ -754,27 +755,30 @@ def compute_scorers_best_threshold_and_score(
 ########################################################################
 # CROSS-VALIDATION
 ########################################################################
-def predict_proba_CV(
+def predict_positive_proba_CV(
     h_estimator,
     X_train,
+    y_train,
     X_test,
-    cv,
+    folds_iterator,
 ):
     """ 
     For an HyperoptEstimator :
     
-    - Predict the probabilities of being in each target class for out
+    - Predict the probabilities of being in the positive class for out
     of folds individuals, using cross-validation. (fit several models) 
     
     - Also mean the probability predictions of each model on X_test.
         
-    Work with gradient boosting algorithms thanks to the 
-    the hyperopt_estimator which allows to make use of early
+    Work with gradient boosting algorithms thanks to 
+    the HyperoptEstimator which allows to make use of early
     stopping techniques.
     
     Args:
     - h_estimator: an HyperoptEstimator
     - X_train/X_test: predictors dataset after the classical data split.
+    - y_train has to be passed for making folds with same target
+    proportions.
     - cv: an sklearn cv object. 
     
     Return (y_pred_oof, y_pred_test)
@@ -785,14 +789,14 @@ def predict_proba_CV(
     y_pred_test = np.zeros(X_test.shape[0])
 
     # Loop over CV splits
-    for cv_train_idx, cv_valid_idx in cv.split(X_train, y_train):
+    for cv_train_idx, cv_valid_idx in folds_iterator.split(X_train, y_train):
         X_train_CV = X_train.iloc[cv_train_idx]
         y_train_CV = y_train.iloc[cv_train_idx]
-        X_valid_CV = X_train.iloc[valid_idx]
-        y_valid_CV = y_train.iloc[valid_idx]
-       
+        X_valid_CV = X_train.iloc[cv_valid_idx]
+        y_valid_CV = y_train.iloc[cv_valid_idx]
+
         # Fit on CV training folds
-        clf = h_estimator.fit(
+        h_estimator.fit(
             X_train_CV,
             y_train_CV,
             X_valid_CV,
@@ -801,9 +805,13 @@ def predict_proba_CV(
         # Make proba predictions
         # Partially fill the probability for being in the positive 
         # class for oof individuals
-        y_pred_oof[cv_valid_idx] = clf.predict_proba(X_valid_CV)[:, 1]
+        y_pred_oof[cv_valid_idx] = h_estimator.predict_proba(X_valid_CV)[:, 1]
         # Progressively compute the mean prediction on the test set
-        y_pred_test += clf.predict_proba(X_test)[:, 1] / cv.n_splits
+        y_pred_test += (
+            h_estimator
+            .predict_proba(X_test)[:, 1] 
+            / folds_iterator.n_splits
+        )
         
     return y_pred_oof, y_pred_test
         
@@ -819,7 +827,7 @@ def objective_adjusted_to_data_and_model(
     y_train: Union[pd.Series, np.array],
     X_test: Union[pd.DataFrame, np.array],
     y_test: Union[pd.Series, np.array],
-    cv,
+    folds_iterator,
     h_estimator: HyperoptEstimator,
     scorers: Dict[str, Scorer],
     optimization_scorer: Scorer,
@@ -862,7 +870,7 @@ def objective_adjusted_to_data_and_model(
             y_train,
             X_test,
             y_test,
-            cv,
+            folds_iterator,
             h_estimator,
             h_estimator_params=hyperparams,
             scorers=scorers,
@@ -888,7 +896,7 @@ def make_cv_predictions_evaluate_and_log(
     y_train: Union[pd.Series, np.array],
     X_test: Union[pd.DataFrame, np.array],
     y_test: Union[pd.Series, np.array],
-    cv,
+    folds_iterator,
     h_estimator: HyperoptEstimator,
     h_estimator_params: Dict[str, Any],
     scorers: Dict[str, Scorer],
@@ -912,7 +920,7 @@ def make_cv_predictions_evaluate_and_log(
         y_test: label array for test data
         cv: a sklearn cross-validation iterator on folds.
         h_estimator : a HyperoptEstimator
-        estimator_params: the hyperparameters to set to the estimator 
+        estimator_params: A dict of hyperparameters to set to the estimator 
         for that evaluation.
         scorers: a list of Scorer used for evaluation and finding 
         the best threshold from the probability prediction.
@@ -921,25 +929,23 @@ def make_cv_predictions_evaluate_and_log(
     """
     with mlflow.start_run(experiment_id=exp_id, nested=nested) as run:
         # Set hyperparameters of the model before evaluation
-        h_estimator = h_estimator.set_params(**h_estimator_params)
+        h_estimator.set_params(h_estimator_params)
         # Work on cross-validation folds.
-        # Fit models and extract the probability of being in each
-        # class for both the train(oof) set and the test set.
-        y_pred_oof, y_pred_test = predict_proba_CV(
+        # Fit models and extract the probability of being in the 
+        # positive class for both the train(oof) set and the test set.
+        y_pos_pred_oof, y_pos_pred_test = predict_positive_proba_CV(
             h_estimator,
             X_train,
+            y_train,
             X_test,
-            cv
+            folds_iterator
         )
-        # Keep only the prediction for being in the positive class.
-        y_pred_oof_pos = y_pred_oof[:, 1]
-        y_pred_test_pos = y_pred_test[:, 1]
         # Search best threshold and score for each scorer.
         # On the training set:
         metrics_= compute_scorers_best_threshold_and_score(
             scorers,
             y_train,
-            y_pred_oof_pos
+            y_pos_pred_oof
         )
         metrics_cv = {
            "CV_"+k: v for (k, v) in metrics_.items()
@@ -948,14 +954,14 @@ def make_cv_predictions_evaluate_and_log(
         metrics_= compute_scorers_best_threshold_and_score(
             scorers,
             y_test,
-            y_pred_test_pos
+            y_pos_pred_test
         )
         metrics_test = {
            "test_"+k: v 
            for (k, v) in metrics_.items()
         }
         # MLflow tracking
-        mlflow.log_params(model_params)
+        mlflow.log_params(h_estimator_params)
         metrics = {**metrics_test, **metrics_cv}
         mlflow.log_metrics(metrics)
         if mlflow_tags is not None:

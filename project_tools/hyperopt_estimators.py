@@ -48,7 +48,7 @@ class HyperoptEstimator:
         self.estimator = estimator
         self.space = space
         self.max_evals = max_evals
-        self.steps_early_stopping = steps_early_stopping  
+        self.early_stopping_rounds = early_stopping_rounds  
         self.eval_metric = eval_metric,
 
         # Actions
@@ -67,8 +67,8 @@ class HyperoptEstimator:
                 .get_params()["eval_metric"]
             )
         
-    def set_params(self, params):
-        """ Set estimator params. """
+    def set_params(self, params: Dict[str, Any]):
+        """ Set estimator params."""
         return self.estimator.set_params(**params)
     
     def is_xgboost_classifier(self):
@@ -77,7 +77,7 @@ class HyperoptEstimator:
     def is_lightGBM_classifier(self):
         return isinstance(self.estimator, lightgbm.sklearn.LGBMClassifier)
     
-    def fit(self, X_train, y_train, X_valid, y_valid, eval_metric):
+    def fit(self, X_train, y_train, X_valid, y_valid):
         """ fit the estimator with or without early stopping technique."""
         # Without early stopping
         if self.early_stopping_rounds is None:
@@ -87,39 +87,29 @@ class HyperoptEstimator:
             if self.is_lightGBM_classifier():
                 self.fit_lightgbm(
                     X_train, y_train, X_valid, y_valid,
-                    eval_metric,
                 )
             if self.is_xgboost_classifier():
                 self.fit_xgboost(
                     X_train, y_train, X_valid, y_valid,
-                    eval_metric
                 )
                 
-    def fit_xgboost(self, X_train, y_train, X_valid, y_valid, eval_metric):
+    def fit_xgboost(self, X_train, y_train, X_valid, y_valid):
         self.estimator.fit(
             X_train,
             y_train,
             eval_set=[(X_train, y_train), (X_valid, y_valid)],
-            eval_names=['training', 'validation'],
-            eval_metric=['auc'], #TODO: possibly to be changed with eval_scorer
-            # categorical_feature=categorical_feature,
-            callbacks=[
-                lightgbm.early_stopping(
-                    self.early_stopping_rounds,
-                    first_metric_only=True
-                )
-            ],
+            # verbose=25
         )
    
     
-    def fit_lightgbm(self, X_train, y_train, X_valid, y_valid, eval_metric):
+    def fit_lightgbm(self, X_train, y_train, X_valid, y_valid):
         self.estimator.fit(
             X_train,
             y_train,
             eval_set=[(X_train, y_train), (X_valid, y_valid)],
             eval_names=['training', 'validation'],
             eval_metric=['auc'], #TODO: possibly to be changed with eval_scorer
-            # categorical_feature=categorical_feature,
+            # categorical_feature=categorical_feature, use self.eval_metric
             callbacks=[
                 lightgbm.early_stopping(
                     self.early_stopping_rounds,
@@ -142,9 +132,14 @@ class HyperoptEstimator:
             if self.is_xgboost_classifier():
                 return self.estimator.predict_proba(
                     X=X,
-                    iteration_range=(0, self.estimator.best_iteration_ + 1)
+                    iteration_range=(0, self.estimator.best_iteration + 1)
                 )
                 
     def get_fmin_params(self):
         return {'space': self.space, 'max_evals': self.max_evals}
+    
+    def print(self):
+        print(
+            f"name : {self.name},\nearly :{self.early_stopping_rounds}"
+        )
         

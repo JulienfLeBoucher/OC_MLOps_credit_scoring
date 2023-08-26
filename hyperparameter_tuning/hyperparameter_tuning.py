@@ -27,7 +27,7 @@ from project_tools.hyperopt_estimators import HyperoptEstimator
 ########################################################################
 # MAIN PARAMETER ZONE
 # MLflow experiment name
-experiment_name = 'all_features_minmax_knn'
+experiment_name = 'test_GBM_compatibility'
 # utils.load_split_clip_scale_and_impute() parameters.
 pre_processing_params = dict(
     predictors=None, 
@@ -37,16 +37,19 @@ pre_processing_params = dict(
     scaling_method='minmax',
     imputation_method='knn',
 )
-# CV folds type
+# CV folds
 stratified_folds = True
+folds_iterator = utils.make_folds(stratified=stratified_folds)
 # Get Scorers and choose the optimization metric :
 scorers = utils.my_Scorers
 optimization_scorer_name = 'loss_of_income'
 # Get HyperoptEstimators defined in my_hyperopt_estimators
 hyperopt_estimators = HyperoptEstimator.all
-print(f"Models to be tuned :")
+print(f"\n>>> Models to be tuned :\n")
 for estimator in hyperopt_estimators:
-    print(f"{estimator.name}")
+    print(f"- {estimator.name}")
+print('')    
+
 ########################################################################
 # WARNING: this section only works when the file is run by the python
 # interpreter, otherwise, the mlflow run command does not take that into 
@@ -70,7 +73,7 @@ exp = mlflow.set_experiment(experiment_name)
 exp_id = exp.experiment_id
 ########################################################################
 # Load and pre-process data
-print('>>>>>> Load and pre-process <<<<<<\n')
+print('>>>>>> Load and pre-process raw features <<<<<<\n')
 (
     X_train_pp, X_test_pp, y_train, y_test, pre_processors,
     
@@ -85,7 +88,7 @@ fixed_params = dict(
     X_test=X_test_pp,
     y_train=y_train,
     y_test=y_test,
-    cv=utils.make_folds(stratified=stratified_folds),
+    folds_iterator=folds_iterator,
     scorers=scorers,
     optimization_scorer=scorers[optimization_scorer_name],
     exp_id=exp_id,
@@ -102,12 +105,12 @@ for h_estim in hyperopt_estimators:
     parent_run_name = h_estim.name
     fmin_params = h_estim.get_fmin_params()
     
-    print(f'>>>>>> Entering hyperparameter tuning '
+    print(f'\n>>>>>> Entering hyperparameter tuning '
           f'for {parent_run_name} <<<<<<')
     
     objective = utils.objective_adjusted_to_data_and_model(
         **fixed_params,
-        model=h_estim.estimator,
+        h_estimator=h_estim,
     )
     trials = hyperopt.Trials()
     # Start the parent run
