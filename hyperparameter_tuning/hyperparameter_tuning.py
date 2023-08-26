@@ -16,18 +16,19 @@
 
 import mlflow
 import hyperopt
-import my_hyperopt_estimators
+import my_hyperopt_estimators 
 import config
 import sys
 # Append path to the parent folder to find the project_tools package.
 sys.path.append('../')
 from project_tools import utils
+from project_tools.hyperopt_estimators import HyperoptEstimator
 
 ########################################################################
 # MAIN PARAMETER ZONE
 # MLflow experiment name
 experiment_name = 'all_features_minmax_knn'
-# load_split_clip_scale_and_impute() parameters.
+# utils.load_split_clip_scale_and_impute() parameters.
 pre_processing_params = dict(
     predictors=None, 
     n_sample=2_000,
@@ -38,11 +39,11 @@ pre_processing_params = dict(
 )
 # CV folds type
 stratified_folds = True
-# Load Scorers and choose the optimization metric :
+# Get Scorers and choose the optimization metric :
 scorers = utils.my_Scorers
 optimization_scorer_name = 'loss_of_income'
-# Load models and associated search space + max_evals
-hyperopt_estimators = my_hyperopt_estimators.hyperopt_estimators
+# Get HyperoptEstimators defined in my_hyperopt_estimators
+hyperopt_estimators = HyperoptEstimator.all
 print(f"Models to be tuned :")
 for estimator in hyperopt_estimators:
     print(f"{estimator.name}")
@@ -94,18 +95,19 @@ fixed_params = dict(
         'optimizer': optimization_scorer_name,
     },
 )
-# Loop on models to create the hyperopt objective 
+# Loop on estimators to create the hyperopt objective 
 # and tune hyperparameters.
-for estimator in hyperopt_estimators:
-    parent_run_name = estimator.name
-    model = estimator.base_estimator
+for h_estim in hyperopt_estimators:
     
-    print(f'>>>>>> Entering hyperparameter tuning'
-          f' for {parent_run_name} <<<<<<')
+    parent_run_name = h_estim.name
+    fmin_params = h_estim.get_fmin_params()
+    
+    print(f'>>>>>> Entering hyperparameter tuning '
+          f'for {parent_run_name} <<<<<<')
     
     objective = utils.objective_adjusted_to_data_and_model(
         **fixed_params,
-        model=model,
+        model=h_estim.estimator,
     )
     trials = hyperopt.Trials()
     # Start the parent run

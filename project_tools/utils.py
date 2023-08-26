@@ -43,6 +43,8 @@ import logging
 logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger(__name__)
 
+from project_tools.hyperopt_estimators import HyperoptEstimator
+
 ########################################################################
 ### Load and prepare data
 ########################################################################
@@ -226,8 +228,9 @@ def load_split_clip_scale_and_impute_data(
         )
     # Retain individuals with target
     data = data[data['TARGET'].notnull()]    
-    # Keep individuals with decent information
+    # Keep individuals with decent information and rename columns
     data = keep_individuals_with_info(data, threshold=400)
+    data = rename_col_for_lgbm_compatibility(data)
     # Build predictors list if not passed as parameter
     # and filter non-valid predictors
     if predictors is None:
@@ -751,7 +754,7 @@ def compute_scorers_best_threshold_and_score(
 ########################################################################
 # CROSS-VALIDATION
 ########################################################################
-def predict_positive_proba_CV(
+def predict_proba_CV(
     h_estimator,
     X_train,
     X_test,
@@ -760,80 +763,51 @@ def predict_positive_proba_CV(
     """ 
     For an HyperoptEstimator :
     
-    - Predict the probabilities of being in the positive class for out
-    of folds individuals, using cross-validation and fitting several 
-    models. 
+    - Predict the probabilities of being in each target class for out
+    of folds individuals, using cross-validation. (fit several models) 
     
     - Also mean the probability predictions of each model on X_test.
-    
-    Return (y_pred_oof, y_pred_test)
-    
+        
     Work with gradient boosting algorithms thanks to the 
-    get_estimator_fit_params method of the hyperopt_estimator.
-    Allows to make use of early stopping techniques.
+    the hyperopt_estimator which allows to make use of early
+    stopping techniques.
     
     Args:
     - h_estimator: an HyperoptEstimator
     - X_train/X_test: predictors dataset after the classical data split.
     - cv: an sklearn cv object. 
+    
+    Return (y_pred_oof, y_pred_test)
     """
     # Arrays made to receive, per cv split, prediction on the validation
     # set (out of fold) and the test set.
     y_pred_oof = np.zeros(X_train.shape[0])
     y_pred_test = np.zeros(X_test.shape[0])
 
+    # Loop over CV splits
     for cv_train_idx, cv_valid_idx in cv.split(X_train, y_train):
         X_train_CV = X_train.iloc[cv_train_idx]
         y_train_CV = y_train.iloc[cv_train_idx]
         X_valid_CV = X_train.iloc[valid_idx]
         y_valid_CV = y_train.iloc[valid_idx]
-        
-        # # Resample the train set and check the balance
-        # train_x_resample, train_y_resample = resample_pipe.fit_resample(train_x, train_y)
-        # print("\n Class percentage in the training folds")
-        # utils.class_percentages(train_y_resample)
-        # print("\n Class percentage in the validation fold")
-        # utils.class_percentages(valid_y)
-        
-        # #
-        # X_train_CV_resample, y_train_resample_CV = X_train_CV, y_train_CV
-        
-        # get the estimator and its fit_params
-        clf = h_estimator.estimator
-        fit_params = h_estimator.get_base_estimator_fit_params(
-            X_train_CV, X_valid_CV, y_train_CV, y_valid_CV
+       
+        # Fit on CV training folds
+        clf = h_estimator.fit(
+            X_train_CV,
+            y_train_CV,
+            X_valid_CV,
+            y_valid_CV,
         )
-        if fit_params is not None:
-            clf.fit(X_train_CV, y_train_CV, **fit_params)
-        else:
-            clf.fit(X_train_CV, y_train_CV)
-            
-        best_iter = clf.best_iteration_
-        # Partially filling oof_preds
-        oof_preds[valid_idx] = clf.predict_proba(
-            valid_x,
-            num_iteration=best_iter
-        )[:, 1]
+        # Make proba predictions
+        # Partially fill the probability for being in the positive 
+        # class for oof individuals
+        y_pred_oof[cv_valid_idx] = clf.predict_proba(X_valid_CV)[:, 1]
         # Progressively compute the mean prediction on the test set
-        sub_preds += clf.predict_proba(
-            test_df,
-            num_iteration=best_iter
-        )[:, 1] / folds.n_splits
-
-        # Feature importance by GAIN and SPLIT
-        fold_importance = pd.DataFrame()
-        fold_importance["feature"] = train_df.columns
-        fold_importance["gain"] = (
-            clf.booster_.feature_importance(importance_type='gain')
-        )
-        fold_importance["split"] = (
-            clf.booster_.feature_importance(importance_type='split')
-        )
-        importance_df = pd.concat([importance_df, fold_importance], axis=0)
+        y_pred_test += clf.predict_proba(X_test)[:, 1] / cv.n_splits
         
-
-
-
+    return y_pred_oof, y_pred_test
+        
+        
 ########################################################################
 # fmin needs an objective function which :
 #   - takes a set of hyperparameters
@@ -846,14 +820,14 @@ def objective_adjusted_to_data_and_model(
     X_test: Union[pd.DataFrame, np.array],
     y_test: Union[pd.Series, np.array],
     cv,
-    model,
+    h_estimator: HyperoptEstimator,
     scorers: Dict[str, Scorer],
     optimization_scorer: Scorer,
     exp_id: str='0',
     mlflow_tags: Dict[str, str]=None,
 ):
-    """ This is a wrapper. Build the Hyperopt objective function 
-    for :
+    """ This is a wrapper. 
+    Build the Hyperopt objective function for :
     - a given dataset,
     - a given model,
     - a given evaluation metric to be optimized among those computed.    
@@ -863,7 +837,8 @@ def objective_adjusted_to_data_and_model(
       y_train: label array for training/CV data
       X_test: feature matrix for test data
       y_test: label array for test data
-      model: Estimator to be set with the hyperparams returned by hyperopt
+      cv: sklearn cv (stratified or not)
+      h_estimator: Estimator to be set with the hyperparams returned by hyperopt
       scorers : A list of Scorers (class created for this project)
       optimization_scorer: the scorer which computes the metric to be optimized
       exp_id: An mlflow experiment id to ensure logs of nested runs are in
@@ -871,7 +846,7 @@ def objective_adjusted_to_data_and_model(
       mlflow_tags: to be added to all nested runs.
 
     Returns:
-        Objective function set up to take hyperparams dict from Hyperopt.
+        Objective function set up to receive hyperparams dict from Hyperopt.
     """
 
     def objective(hyperparams):
@@ -888,8 +863,8 @@ def objective_adjusted_to_data_and_model(
             X_test,
             y_test,
             cv,
-            model,
-            model_params=hyperparams,
+            h_estimator,
+            h_estimator_params=hyperparams,
             scorers=scorers,
             mlflow_tags=mlflow_tags,
             exp_id=exp_id,
@@ -914,31 +889,29 @@ def make_cv_predictions_evaluate_and_log(
     X_test: Union[pd.DataFrame, np.array],
     y_test: Union[pd.Series, np.array],
     cv,
-    h_estimator: my_hyperopt_estimators.HyperoptEstimator,
-    estimator_params: Dict[str, Any],
+    h_estimator: HyperoptEstimator,
+    h_estimator_params: Dict[str, Any],
     scorers: Dict[str, Scorer],
     mlflow_tags: Dict[str, str],
     exp_id: str,
     nested: bool = False
 ) -> Dict[str, Any]:
     """ 
-    1) Instantiate a model with model_params.
-    2) Make prediction (default to predict_proba) on the CV-folds 
-    using cross_val_predict (fitting several models on folds 
-    combinations)
-    3) Compute best threshold and score for each scorer on the 
-    out-of-fold prediction.
-    4) Fit on the training set and compute metrics on the testing set.
-    5) Log to exp_id folder in MLflow
-    6) Return all metrics.
+    1) Instantiate a model with tje h_estimator_params.
+    2) Make probability predictions following the CV-out-of-fold 
+    technique on the train and using mean predictions of CV models on
+    the test set. 
+    3) Compute best threshold and score for each scorer on both sets.
+    4) Log to exp_id folder in MLflow
+    5) Return all metrics.
     
     Args:
-        x_train: feature matrix for training/CV data
+        X_train: feature matrix for training/CV data
         y_train: label array for training/CV data
-        x_test: feature matrix for test data
+        X_test: feature matrix for test data
         y_test: label array for test data
         cv: a sklearn cross-validation iterator on folds.
-        estimator : a HyperoptEstimator
+        h_estimator : a HyperoptEstimator
         estimator_params: the hyperparameters to set to the estimator 
         for that evaluation.
         scorers: a list of Scorer used for evaluation and finding 
@@ -948,42 +921,42 @@ def make_cv_predictions_evaluate_and_log(
     """
     with mlflow.start_run(experiment_id=exp_id, nested=nested) as run:
         # Set hyperparameters of the model before evaluation
-        h_estimator = h_estimator.set_estimator_params(**estimator_params)
-        
+        h_estimator = h_estimator.set_params(**h_estimator_params)
         # Work on cross-validation folds.
-        # Fit models and extract the probability of being in the
-        # positive class for both the train set and the test set.
-        y_pred_oof, y_pred_test = predict_pos_proba_CV(
+        # Fit models and extract the probability of being in each
+        # class for both the train(oof) set and the test set.
+        y_pred_oof, y_pred_test = predict_proba_CV(
             h_estimator,
             X_train,
             X_test,
             cv
         )
-        # Search best threshold and score for each scorer
+        # Keep only the prediction for being in the positive class.
+        y_pred_oof_pos = y_pred_oof[:, 1]
+        y_pred_test_pos = y_pred_test[:, 1]
+        # Search best threshold and score for each scorer.
+        # On the training set:
         metrics_= compute_scorers_best_threshold_and_score(
             scorers,
             y_train,
-            y_pred_oof
+            y_pred_oof_pos
         )
         metrics_cv = {
            "CV_"+k: v for (k, v) in metrics_.items()
         }
-        
-        # Use mean probability predictions of CV model to score on the
-        # test set.
+        # On the test set
         metrics_= compute_scorers_best_threshold_and_score(
             scorers,
             y_test,
-            y_pred_test
+            y_pred_test_pos
         )
         metrics_test = {
            "test_"+k: v 
            for (k, v) in metrics_.items()
         }
-        
-        metrics = {**metrics_test, **metrics_cv}
         # MLflow tracking
         mlflow.log_params(model_params)
+        metrics = {**metrics_test, **metrics_cv}
         mlflow.log_metrics(metrics)
         if mlflow_tags is not None:
             mlflow.set_tags(mlflow_tags)

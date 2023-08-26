@@ -4,64 +4,30 @@ from sklearn.svm import SVC
 from lightgbm import LGBMClassifier
 from xgboost import XGBClassifier
 from hyperopt import hp
-import numpy as np 
+from numpy import log 
 from typing import Callable, Dict, Any
+import sys
+sys.path.append('..')
+from project_tools.hyperopt_estimators import HyperoptEstimator
 
-DEFAULT_MAX_EVALS = 2
-
-class HyperoptEstimator:
-    
-    def __init__(
-        self,
-        name: str,
-        estimator: Estimator,
-        space: Dict[str, Any]=None,
-        max_evals: int=DEFAULT_MAX_EVALS,
-        make_base_estimator_fit_params: Callable[[]]=None,  
-    ):
-        """
-        - name: serve as the model name and the mlflow parent run.
-        - estimator: part of the model with its fixed hyperparameters.
-        - space: hyperopt fmin space argument. Describe where
-        hyperparameters can take values.
-        - max_evals: number of search iterations before stopping tuning.
-        - make_fit_params: a callable that receives training and
-        validation sets and builds extra fit parameters for the models
-        if we, for example, want to use early stopping technique.
-        
-        #TODO : think if it is possible to augment this class with an 
-        # imb_pipeline, so it is the finishing step of a resampling 
-        # process. Should be possible as the pipeline take fit_params
-        prefixed with the step.
-        """
-        self.name = name
-        self.base_estimator = base_estimator
-        self.space = space
-        self.max_evals = max_evals
-        
-    def set_estimator_params(params):
-        return base_estimator.set_params(**params)
-
-    def get_estimator_fit_params(X_train, X_valid, y_train, y_valid):
-        if self.make_fit_params is not None:
-            return self.make_fit_params(X_train, X_valid, y_train, y_valid)
-        else:
-            return None
-        
-    def get_fmin_params():
-        return {'space': self.space, 'max_evals': self.max_evals}
+#TODO: may be change eval metric which defaults to 'auc' 
+# for xbg and lgmb.
 
 
+imbalance_ratio = 10 #(N_neg / N_positive)
+
+########################################################################
+# Define all HyperoptEstimators here :
 # LogisticRegression with L1 regulation
 Lasso = HyperoptEstimator(
     name="Lasso-type Logistic Regression",
     estimator=LogisticRegression(penalty='l1', max_iter=5_000),
     space={
-            'C': hp.lognormal('C', 0, 1.0),
-            'class_weight': hp.choice('class_weight', ['balanced', None]),
-            'solver': hp.choice('solver', ['liblinear']),
-        }, 
-    #max_evals= ,
+        'C': hp.lognormal('C', 0, 1.0),
+        'class_weight': hp.choice('class_weight', ['balanced', None]),
+        'solver': hp.choice('solver', ['liblinear']),
+    }, 
+    max_evals=3,
 )
 
 # LogisticRegression with L2 regulation
@@ -69,11 +35,11 @@ Ridge = HyperoptEstimator(
     name="Rigde-type Logistic Regression",
     estimator=LogisticRegression(penalty='l2', max_iter=5_000),
     space={
-            'C': hp.lognormal('C', 0, 1.0),
-            'class_weight': hp.choice('class_weight', ['balanced', None]),
-            'solver': hp.choice('solver', ['liblinear', 'lbfgs']),
-        }, 
-    #max_evals= ,
+        'C': hp.lognormal('C', 0, 1.0),
+        'class_weight': hp.choice('class_weight', ['balanced', None]),
+        'solver': hp.choice('solver', ['liblinear', 'lbfgs']),
+    }, 
+    max_evals=3,
 )
 
 # Random Forest
@@ -88,7 +54,7 @@ RandomForest = HyperoptEstimator(
         'criterion': hp.choice('criterion', ['gini', 'log_loss', 'entropy']),
         'class_weight': hp.choice('class_weight', ['balanced', None]),
     },
-    #max_evals= ,
+    max_evals=3,
 )
 
 # SVCs
@@ -99,7 +65,7 @@ SVC_rbf = HyperoptEstimator(
         'C': hp.loguniform('C', -10, 2),
         'gamma': hp.loguniform('gamma', -10, 2),
     },
-    #max_evals= ,
+    max_evals=3,
 )
 
 SVC_poly = HyperoptEstimator(
@@ -111,24 +77,20 @@ SVC_poly = HyperoptEstimator(
         'gamma': hp.loguniform('gamma', -10, 2),
         'coef0': hp.uniform('coef0', -5, 5),
     },
-    #max_evals= ,
+    max_evals=3 ,
 )
 
 # lightGBM
-LightGBM = HyperoptEstimator(
+lightGBM = HyperoptEstimator(
     name="LightGBM",
-    base_estimator=LGBMClassifier(
-        objective='binary', 
-        nthread=-1,
-        n_estimators=10_000,
-        random_state= 103,
-        make_fit_params=lightGBM_make_fit_param,
+    estimator=LGBMClassifier(
+        objective='binary',  nthread=-1, n_estimators=10_000, random_state= 103
     ),
     space={
             'boosting_type': hp.choice('boosting_type', ['gbdt', 'dart', 'goss']),
             'num_leaves': hp.quniform('num_leaves', 10, 100, 1),
             'max_depth': hp.quniform('max_depth', 3, 15, 1),
-            'learning_rate': hp.loguniform('learning_rate', np.log(0.004), np.log(0.2)),
+            'learning_rate': hp.loguniform('learning_rate', log(0.004), log(0.2)),
             'subsample_for_bin': hp.quniform('subsample_for_bin', 120000, 300000, 20000),
             'min_child_samples': hp.quniform('min_child_samples', 80, 400, 10),
             'reg_alpha': hp.uniform('reg_alpha', 0.0, 1.0),
@@ -140,61 +102,47 @@ LightGBM = HyperoptEstimator(
             #'subsample': hp.uniform('subsample', 0.6, 1.0)
         },
     max_evals=5,
-    make_base_estimator_fit_params=lightGBM_make_fit_param
+    early_stopping_rounds=50,
+    eval_metric=None,
 )
 
-def lightGBM_make_fit_param(X_train, X_valid, y_train, y_valid):
-    fit_params = dict(
-        eval_set=[(X_train, y_train), (X_valid, y_valid)],
-        eval_names=['training', 'validation'],
-        eval_metric=['auc'], #TODO: possibly to be changed with my metric
-        # categorical_feature=categorical_feature,
-        callbacks=[lgb.early_stopping(100, first_metric_only=True)],
-    )
-    return fit_params
+# For xgboost early stopping round and eval_metric are part of the estimator
+# instance. No need to specify them a second time.
+xgboost = HyperoptEstimator(
+    name="XGBoost Classifier",
+    estimator=XGBClassifier(
+        objective='binary:logis tic',
+        n_estimators=10_000,
+        early_stopping_rounds=50,
+        random_state= 103,
+        njobs=-1,
+        eval_metric='auc',
+        verbosity=1,
+    ),
+    space = {
+        'learning_rate': hp.loguniform('learning_rate', log(0.004), log(0.2)),
+        'booster': hp.choice('booster', ['gbtree', 'dart', 'gblinear']),
+        'grow_policy': hp.choice('grow_policy', [0, 1]),
+        'max_depth':  hp.uniformint('max_depth', 1, 10),
+        'min_child_weight': hp.uniformint('min_child_weight', 1, 8),
+        'subsample': hp.quniform('subsample', 0.5, 1, 0.01),
+        'gamma': hp.loguniform('gamma', log(1e-5), log(100)),
+        'colsample_bytree': hp.quniform('colsample_bytree', 0.5, 1, 0.05),
+        'scale_pos_weight': hp.choice('scale_pos_weight', [1, imbalance_ratio])
+    },
+    max_evals=5,
+)
 
-# # xgboost
-# XGBoost = model_configs["XGBOOST"] = dict(
-#     model=XGBClassifier(
-#         nthread= 4,
-#         n_estimators=10000,
-#         random_state= 103,
-#         silent=-1,
-#         verbose=-1
-#     ),
-#     fmin_params = dict(
-        
-#         space={
-#             'boosting_type': hp.choice('boosting_type',
-#                                        [{'boosting_type': 'gbdt',
-#                                          'subsample': hp.uniform('gdbt_subsample', 0.6, 1)},
-#                                         {'boosting_type': 'goss', 'subsample': 1.0}]),
-#             'num_leaves': hp.quniform('num_leaves', 36, 86, 1),
-#             'max_depth': hp.quniform('max_depth', 4, 14, 1),
-#             'learning_rate': hp.loguniform('learning_rate', np.log(0.004), np.log(0.2)),
-#             'subsample_for_bin': hp.quniform('subsample_for_bin', 120000, 300000, 20000),
-#             'min_child_samples': hp.quniform('min_child_samples', 80, 400, 10),
-#             'reg_alpha': hp.uniform('reg_alpha', 0.0, 1.0),
-#             'reg_lambda': hp.uniform('reg_lambda', 0.0, 1.0),
-#             'colsample_bytree': hp.uniform('colsample_by_tree', 0.5, 1.0),
-#             'is_unbalance': hp.choice('is_unbalance', [True, False]),
-#             'min_split_gain': hp.uniform('min_split_gain', 0.01, 0.05),
-#             #'min_child_weight': hp.quniform('min_child_weight', 10, 50, 1),
-#             #'subsample': hp.uniform('subsample', 0.6, 1.0)
-#         },
-#         max_evals=200,
-        
-#     )
-# )
+
 
 
 
     
-hyperopt_estimators = [
-    Lasso,
-    Ridge,
-    RandomForest,
-    SVC_rbf,
-    SVC_poly,
-    LightGBM,
-]
+# hyperopt_estimators = [
+    # Lasso,
+    # Ridge,
+    # RandomForest,
+    # SVC_rbf,
+    # SVC_poly,
+    # LightGBM,
+# ]
