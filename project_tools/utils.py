@@ -700,6 +700,20 @@ def loss_of_income_score(y_true, y_pred, fn_weight=5):
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
     return (fn_weight*fn + fp) / len(y_true)
    
+   
+def convert_scorer_to_lightgbm_eval_metric(scorer):
+    """ Adapt a scorer from Scorer class to a callable which output 
+    what is expected by the lightgbm Classifier. """
+    def lightgbm_scorer(y_true, y_pred):
+        threshold, best_score = scorer.find_best_threshold_and_score(
+            y_true, y_pred
+        )
+        return(
+            scorer.name,
+            best_score,
+            scorer.greater_is_better
+        )
+    return lightgbm_scorer
             
 # Define a dict of Scorers       
 # I commented some scorers for time economy. 

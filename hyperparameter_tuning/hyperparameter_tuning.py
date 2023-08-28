@@ -17,17 +17,21 @@
 import mlflow
 import hyperopt
 import my_hyperopt_estimators 
+import my_scorers
 import config
 import sys
 # Append path to the parent folder to find the project_tools package.
 sys.path.append('../')
 from project_tools import utils
 from project_tools.hyperopt_estimators import HyperoptEstimator
+from project_tools.scorer import Scorer
 
 ########################################################################
-# MAIN PARAMETER ZONE
+# PARAMETER ZONE
+
 # MLflow experiment name
-experiment_name = 'test_GBM_compatibility'
+experiment_name = 'all_fts_minmax_knn'
+
 # utils.load_split_clip_scale_and_impute() parameters.
 pre_processing_params = dict(
     predictors=None, 
@@ -37,13 +41,38 @@ pre_processing_params = dict(
     scaling_method='minmax',
     imputation_method='knn',
 )
+
 # CV folds
 stratified_folds = True
-folds_iterator = utils.make_folds(stratified=stratified_folds)
+
 # Get Scorers and choose the optimization metric :
-scorers = utils.my_Scorers
 optimization_scorer_name = 'loss_of_income'
-# Get HyperoptEstimators defined in my_hyperopt_estimators
+
+########################################################################
+# Chose the folds iterator type
+folds_iterator = utils.make_folds(stratified=stratified_folds)
+# Extract associated params to pass to my hyperopt estimators :
+# - load all scorers.
+# - focus on the optimization scorer.
+# - build lightgbm user defined eval_metric.
+# - build xgboost eval_metric
+scorers = Scorer.all
+optimization_scorer = [
+    sc for sc in scorers if sc.name == optimization_scorer_name
+][0]
+
+lightgbm_eval_metric = (
+    utils.convert_scorer_to_lightgbm_eval_metric(optimization_scorer)
+)
+
+if optimization_scorer.greater_is_better:
+    print('WARNING : Currently, optimization scorer to be maximized are not supported.')
+    print('It is possible, but you need to implement it')
+else:
+    print('eval_metric for xgboost: OK')
+    xgboost_eval_metric = optimization_scorer.score_func
+
+# Print HyperoptEstimators defined in my_hyperopt_estimators
 hyperopt_estimators = HyperoptEstimator.all
 print(f"\n>>> Models to be tuned :\n")
 for estimator in hyperopt_estimators:
@@ -81,8 +110,10 @@ print('>>>>>> Load and pre-process raw features <<<<<<\n')
     config.DATA_PATH,
     **pre_processing_params
 )
-# Derived a set of parameters to create the objective function that does 
-# not depend on the model type but rather on input datasets and scorers.
+
+# Derived a set of parameters to create the hyperopt objective function
+# that does not depend on the model type but rather on input datasets
+# and scorers.
 fixed_params = dict(
     X_train=X_train_pp,
     X_test=X_test_pp,
@@ -90,7 +121,7 @@ fixed_params = dict(
     y_test=y_test,
     folds_iterator=folds_iterator,
     scorers=scorers,
-    optimization_scorer=scorers[optimization_scorer_name],
+    optimization_scorer=optimization_scorer,
     exp_id=exp_id,
     mlflow_tags= {
         'pre_processing': str(pre_processing_params),
@@ -98,8 +129,9 @@ fixed_params = dict(
         'optimizer': optimization_scorer_name,
     },
 )
+
 # Loop on estimators to create the hyperopt objective 
-# and tune hyperparameters.
+# and tune hyperparameters while tracking performance.
 for h_estim in hyperopt_estimators:
     
     parent_run_name = h_estim.name

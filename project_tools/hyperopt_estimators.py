@@ -89,6 +89,7 @@ class HyperoptEstimator:
                     X_train, y_train, X_valid, y_valid,
                 )
             if self.is_xgboost_classifier():
+                # the eval_metric is already part of the model definition.
                 self.fit_xgboost(
                     X_train, y_train, X_valid, y_valid,
                 )
@@ -108,7 +109,7 @@ class HyperoptEstimator:
             y_train,
             eval_set=[(X_train, y_train), (X_valid, y_valid)],
             eval_names=['training', 'validation'],
-            eval_metric=['auc'], #TODO: possibly to be changed with eval_scorer
+            eval_metric=[self.eval_metric], #TODO: possibly to be changed with eval_scorer
             # categorical_feature=categorical_feature, use self.eval_metric
             callbacks=[
                 lightgbm.early_stopping(
