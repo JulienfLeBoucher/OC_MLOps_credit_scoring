@@ -1,4 +1,7 @@
 import numpy as np
+import sys
+sys.path.append('/home/louberehc/OCR/projets/7_scoring_model/project_tools')
+from project_tools import utils
 
 class Scorer:
     """ 
@@ -46,7 +49,7 @@ class Scorer:
         for idx, t in enumerate(thresholds):
             scores[idx] = self.evaluate_predictions(
                 y_true,
-                threshold_class_from_proba(proba_pred, threshold=t)    
+                utils.threshold_class_from_proba(proba_pred, threshold=t)    
             )
         if self.greater_is_better:
             best_score = np.max(scores)
@@ -62,3 +65,4 @@ class Scorer:
         print(f"score_kwargs : {self.score_kwargs}")
         print(f"greater_is_better : {self.greater_is_better}")
 # End Scorer
+

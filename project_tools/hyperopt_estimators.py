@@ -109,8 +109,8 @@ class HyperoptEstimator:
             y_train,
             eval_set=[(X_train, y_train), (X_valid, y_valid)],
             eval_names=['training', 'validation'],
-            eval_metric=[self.eval_metric], #TODO: possibly to be changed with eval_scorer
-            # categorical_feature=categorical_feature, use self.eval_metric
+            #TODO: test and validate with custom metric?
+            eval_metric=[self.eval_metric], 
             callbacks=[
                 lightgbm.early_stopping(
                     self.early_stopping_rounds,

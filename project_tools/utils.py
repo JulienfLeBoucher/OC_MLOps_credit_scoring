@@ -695,7 +695,7 @@ def loss_of_income_score(y_true, y_pred, fn_weight=5):
     """ Compute the loss of income due to false negatives
     and false positives over-penalizing false negative with a weight. 
     
-    Finally normalize by the number of individuals
+    Finally normalize by the number of individuals.
     """
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
     return (fn_weight*fn + fp) / len(y_true)
@@ -703,14 +703,17 @@ def loss_of_income_score(y_true, y_pred, fn_weight=5):
    
 def convert_scorer_to_lightgbm_eval_metric(scorer):
     """ Adapt a scorer from Scorer class to a callable which output 
-    what is expected by the lightgbm Classifier. """
+    what is expected by the lightgbm Classifier.
+    
+    Note: As it expects this signature and not (y_true, y_pred_proba),
+    I can not incorporate thresholds here and I evaluate the yet cutoff 
+    prediction.
+    """
     def lightgbm_scorer(y_true, y_pred):
-        threshold, best_score = scorer.find_best_threshold_and_score(
-            y_true, y_pred
-        )
+        score = scorer.evaluate_predictions(y_true, y_pred)
         return(
             scorer.name,
-            best_score,
+            score,
             scorer.greater_is_better
         )
     return lightgbm_scorer
@@ -735,7 +738,7 @@ my_Scorers = {
     
     
 def compute_scorers_best_threshold_and_score(
-    scorers: Dict[str, Scorer],
+    scorers: List[Scorer],
     y_true,
     proba
 ):
@@ -753,7 +756,7 @@ def compute_scorers_best_threshold_and_score(
     in the positive class.)
     """
     metrics = {}
-    for scorer_key, scorer in scorers.items():
+    for scorer in scorers:
         (
             metrics[f'threshold_{scorer.name}'],
             metrics[f'{scorer.name}']
