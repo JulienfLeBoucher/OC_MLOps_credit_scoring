@@ -935,7 +935,7 @@ def make_cv_predictions_evaluate_and_log(
         y_train: label array for training/CV data
         X_test: feature matrix for test data
         y_test: label array for test data
-        cv: a sklearn cross-validation iterator on folds.
+        folds_iterator: a sklearn cross-validation iterator on folds.
         h_estimator : a HyperoptEstimator
         estimator_params: A dict of hyperparameters to set to the estimator 
         for that evaluation.
