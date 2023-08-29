@@ -1,18 +1,32 @@
 # Script objective:
 # 
-# Track (MLflow) performance of different classifiers while being tuned with
-# hyperopt(with regard to an optimization Scorer) using cross-validation.
+# Track (MLflow) performance for different classifiers while being tuned 
+# with hyperopt(with regard to an optimization Scorer) using 
+# cross-validation.
 # 
+# The Scorer can receive cutoff or probability predictions. In this 
+# script, happening in the utils.objective_adjusted_to_data_and_model() 
+# function, it receives probability predictions and then search for the 
+# best threshold that optimizes the score.
+#
 # GOAL: Compare model and choose the one to fine-tune.
 #
-# The script can be launched with python or with the `mlflow run` command. 
+# The script can be launched with python or with the `mlflow run` 
+# command. 
 
-# In the latter case, some bugs occurs naturally when passing arguments to
+# In the latter case, some bugs occurs when passing arguments to
 # mlflow.start_run(). To avoid that:
 # - pass redundantly the --experiment_name "..." to the run command.
 # https://github.com/mlflow/mlflow/issues/2735
-# - a workaround has been implemented directly in the code as suggested here: 
+# - a workaround has been implemented directly in the code as suggested 
+# here: 
 # https://github.com/mlflow/mlflow/issues/2804#issuecomment-640056129
+#
+# TODO: The current script as a slight inconsistency. The tuning of the 
+# number of estimators is made using early stopping techniques. 
+# Nevertheless, they are not implemented with the custom eval metric but
+# rather with the 'auc'. I've started the development and it is possibly
+# not far to be working, so I decided to let it under the TODO tag. 
 
 import mlflow
 import hyperopt
@@ -28,7 +42,7 @@ from project_tools.scorer import Scorer
 
 ########################################################################
 # MAIN PARAMETER ZONE
-
+########################################################################
 # MLflow experiment name
 experiment_name = 'test'
 
@@ -54,16 +68,14 @@ folds_iterator = utils.make_folds(stratified=stratified_folds)
 
 # - load all scorers instantiated in my_scorers.py
 # - focus on the optimization scorer.
+# TODO:
 # - build lightgbm user defined eval_metric.
 # - build xgboost eval_metric
 scorers = Scorer.all 
 optimization_scorer = [
     sc for sc in scorers if sc.name == optimization_scorer_name
 ][0]
-
-########################################################################
 # TODO: build custom user defined eval_metric for lgbm and xgb
-
 # Here is a first attempt which can be uncommented for further
 # development.
 
