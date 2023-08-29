@@ -862,7 +862,7 @@ def objective_adjusted_to_data_and_model(
       y_train: label array for training/CV data
       X_test: feature matrix for test data
       y_test: label array for test data
-      cv: sklearn cv (stratified or not)
+      folds_iterator: from sklearn (stratified or not)
       h_estimator: Estimator to be set with the hyperparams returned by hyperopt
       scorers : A list of Scorers (class created for this project)
       optimization_scorer: the scorer which computes the metric to be optimized
