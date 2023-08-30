@@ -1,33 +1,52 @@
 # Script objective:
 # 
-# Track (MLflow) performance of different classifiers while being tuned with
-# hyperopt(with regard to an optimization Scorer) using cross-validation.
+# Track (MLflow) performance for different classifiers while being tuned 
+# with hyperopt(with regard to an optimization Scorer) using 
+# cross-validation.
 # 
+# The Scorer can receive cutoff or probability predictions. In this 
+# script, happening in the utils.objective_adjusted_to_data_and_model() 
+# function, it receives probability predictions and then search for the 
+# best threshold that optimizes the score.
+#
 # GOAL: Compare model and choose the one to fine-tune.
 #
-# The script can be launched with python or with the `mlflow run` command. 
+# The script can be launched with python or with the `mlflow run` 
+# command. 
 
-# In the latter case, some bugs occurs naturally when passing arguments to
+# In the latter case, some bugs occurs when passing arguments to
 # mlflow.start_run(). To avoid that:
 # - pass redundantly the --experiment_name "..." to the run command.
 # https://github.com/mlflow/mlflow/issues/2735
-# - a workaround has been implemented directly in the code as suggested here: 
+# - a workaround has been implemented directly in the code as suggested 
+# here: 
 # https://github.com/mlflow/mlflow/issues/2804#issuecomment-640056129
+#
+# TODO: The current script as a slight inconsistency. The tuning of the 
+# number of estimators is made using early stopping techniques. 
+# Nevertheless, they are not implemented with the custom eval metric but
+# rather with the 'auc'. I've started the development and it is possibly
+# not far to be working, so I decided to let it under the TODO tag. 
 
 import mlflow
 import hyperopt
-import model_configs
+import my_scorers
+import my_hyperopt_estimators
 import config
 import sys
 # Append path to the parent folder to find the project_tools package.
 sys.path.append('../')
 from project_tools import utils
+from project_tools.hyperopt_estimators import HyperoptEstimator
+from project_tools.scorer import Scorer
 
 ########################################################################
 # MAIN PARAMETER ZONE
+########################################################################
 # MLflow experiment name
-experiment_name = 'all_features_minmax_knn'
-# load_split_clip_scale_and_impute() parameters.
+experiment_name = 'test'
+
+# utils.load_split_clip_scale_and_impute() parameters.
 pre_processing_params = dict(
     predictors=None, 
     n_sample=2_000,
@@ -36,22 +55,53 @@ pre_processing_params = dict(
     scaling_method='minmax',
     imputation_method='knn',
 )
-# CV folds type
+
+# CV folds
 stratified_folds = True
-# Load Scorers and choose the optimization metric :
-scorers = utils.my_Scorers
+
+# Get Scorers and choose the optimization metric :
 optimization_scorer_name = 'loss_of_income'
-# Load models and associated search space + max_evals
-model_configs = model_configs.model_configs
-# Choose models to be tuned (add/comment/uncomment)
-# Those are the keys of model_configs
-model_names = [
-    # 'Lasso-type Logistic Regression',
-    # 'Rigde-type Logistic Regression',
-    # 'Random Forest',
-    'SVC',
-    # 'LightGBM',
-]
+
+########################################################################
+# Chose the folds iterator type
+folds_iterator = utils.make_folds(stratified=stratified_folds)
+
+# - load all scorers instantiated in my_scorers.py
+# - focus on the optimization scorer.
+# TODO:
+# - build lightgbm user defined eval_metric.
+# - build xgboost eval_metric
+scorers = Scorer.all 
+optimization_scorer = [
+    sc for sc in scorers if sc.name == optimization_scorer_name
+][0]
+# TODO: build custom user defined eval_metric for lgbm and xgb
+# Here is a first attempt which can be uncommented for further
+# development.
+
+# lightgbm_eval_metric = (
+#     utils.convert_scorer_to_lightgbm_eval_metric(optimization_scorer)
+# )
+
+# if optimization_scorer.greater_is_better:
+#     print('WARNING : Currently, optimization scorer to be maximized are not supported.')
+#     print('It is possible, but you need to implement it')
+# else:
+#     print('eval_metric for xgboost: OK')
+#     xgboost_eval_metric = optimization_scorer.score_func
+########################################################################
+# Instances of HypertoptEstimator
+my_hyperopt_estimators.instantiate_hyperopt_estimators(
+    # lightgbm_eval_metric=lightgbm_eval_metric,
+    # xgboost_eval_metric=xgboost_eval_metric,
+)
+hyperopt_estimators = HyperoptEstimator.all
+
+print(f"\n>>> Models to be tuned :\n")
+for estimator in hyperopt_estimators:
+    print(f"- {estimator.name}")
+print('')    
+
 ########################################################################
 # WARNING: this section only works when the file is run by the python
 # interpreter, otherwise, the mlflow run command does not take that into 
@@ -75,7 +125,7 @@ exp = mlflow.set_experiment(experiment_name)
 exp_id = exp.experiment_id
 ########################################################################
 # Load and pre-process data
-print('>>>>>> Load and pre-process <<<<<<\n')
+print('>>>>>> Load and pre-process raw features <<<<<<\n')
 (
     X_train_pp, X_test_pp, y_train, y_test, pre_processors,
     
@@ -83,35 +133,39 @@ print('>>>>>> Load and pre-process <<<<<<\n')
     config.DATA_PATH,
     **pre_processing_params
 )
-# Derived a set of parameters to create the objective function that does 
-# not depend on the model type but rather on input datasets and scorers.
+
+# Derived a set of parameters to create the hyperopt objective function
+# that does not depend on the model type but rather on input datasets
+# and scorers.
 fixed_params = dict(
     X_train=X_train_pp,
     X_test=X_test_pp,
     y_train=y_train,
     y_test=y_test,
-    cv=utils.make_folds(stratified=stratified_folds),
+    folds_iterator=folds_iterator,
     scorers=scorers,
-    optimization_scorer=scorers[optimization_scorer_name],
+    optimization_scorer=optimization_scorer,
     exp_id=exp_id,
     mlflow_tags= {
         'pre_processing': str(pre_processing_params),
         'stratified_cv': str(stratified_folds),
         'optimizer': optimization_scorer_name,
-    }
+    },
 )
-# Loop on models to create the hyperopt objective 
-# and tune hyperparameters.
-for parent_run_name in model_names:
-    model = model_configs[parent_run_name]['model']
-    fmin_params = model_configs[parent_run_name]['fmin_params']
+
+# Loop on estimators to create the hyperopt objective 
+# and tune hyperparameters while tracking performance.
+for h_estim in hyperopt_estimators:
     
-    print(f'>>>>>> Entering hyperparameter tuning'
-          f' for {parent_run_name} <<<<<<')
+    parent_run_name = h_estim.name
+    fmin_params = h_estim.get_fmin_params()
+    
+    print(f'\n>>>>>> Entering hyperparameter tuning '
+          f'for {parent_run_name} <<<<<<')
     
     objective = utils.objective_adjusted_to_data_and_model(
         **fixed_params,
-        model=model,
+        h_estimator=h_estim,
     )
     trials = hyperopt.Trials()
     # Start the parent run
