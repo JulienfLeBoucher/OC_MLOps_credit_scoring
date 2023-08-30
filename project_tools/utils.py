@@ -290,6 +290,7 @@ def load_split_clip_scale_and_impute_data(
     # Process categorical features based on the X_train information.
     ################################################################
     # Imputation (Use 1NN imputer on LE categorical features)
+    print('>>> Imputing categorical features')
     cat_imputer = KNNImputer(n_neighbors=1)
     cat_imputer.fit(X_train[categorical_features])
     X_train.loc[:, categorical_features] = (
