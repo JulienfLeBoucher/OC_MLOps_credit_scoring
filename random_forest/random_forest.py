@@ -1,9 +1,9 @@
 # Script objective:
 # 
-# Track (MLflow) pipeline performance 
-# (SMOTENC, undersampling, random forest) 
+# Track (MLflow) pipeline performance with optional SMOTENC, 
+# undersampling, and one-hot encoder before a random forest classifier. 
 # while being tuned with hyperopt(with regard to an optimization Scorer) 
-# using cross-validation. Also vary pre-processing.
+# using cross-validation. 
 # 
 # GOAL: Observe SMOTE impact and select most important features.
 #
@@ -31,10 +31,12 @@ from project_tools import utils
 from project_tools.hyperopt_estimators import HyperoptEstimator
 from project_tools.scorer import Scorer
 
+from sklearn.preprocessing import OneHotEncoder
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.compose import ColumnTransformer
 from imblearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
+from imblearn.over_sampling import SMOTENC
+from imblearn.under_sampling import RandomUnderSampler
 ########################################################################
 # MAIN PARAMETER ZONE
 ########################################################################
@@ -47,32 +49,32 @@ experiment_name = 'random_forest'
 # Of course, more combinations exist, but for time motivations, I have
 # chosen to explore only those.
 
-pre_processing_params = list(
+pre_processing_params = [
     dict(
         predictors=None, 
-        n_sample=3_000,
+        n_sample=1_500,
         ohe=False,
         clip=True,
         scaling_method='minmax',
         imputation_method='knn',
     ),
-    dict(
-        predictors=None, 
-        n_sample=3_000,
-        ohe=False,
-        clip=True,
-        scaling_method='minmax',
-        imputation_method='median',
-    ),
-    dict(
-        predictors=None, 
-        n_sample=3_000,
-        ohe=False,
-        clip=True,
-        scaling_method='standard',
-        imputation_method='median',
-    ),
-)
+    # dict(
+    #     predictors=None, 
+    #     n_sample=3_000,
+    #     ohe=False,
+    #     clip=True,
+    #     scaling_method='minmax',
+    #     imputation_method='median',
+    # ),
+    # dict(
+    #     predictors=None, 
+    #     n_sample=3_000,
+    #     ohe=False,
+    #     clip=True,
+    #     scaling_method='standard',
+    #     imputation_method='median',
+    # ),
+]
 # CV folds
 stratified_folds = True
 
@@ -117,25 +119,30 @@ ohe_cat = ColumnTransformer(
     remainder="passthrough",
 )
 
-pipeline = Pipeline(
+pipeline_smote = Pipeline(
     steps = [('o', over), ('u', under), ('rfc', rf)]
 )
-pipeline_ohe = Pipeline(
+pipeline_smote_ohe = Pipeline(
     steps=[('o', over), ('u', under), ('ohe', ohe_cat), ('rfc', rf)]
 )
+pipeline_ohe = Pipeline(
+    steps=[('ohe', ohe_cat), ('rfc', rf)]
+)
+
+
 
 # Hyperparameters spaces are similar, only the one-hot encoder step 
 # differs from the 2 pipelines.
 hyperopt_estimators = [
     HyperoptEstimator(
         name="SMOTE pipeline with Random Forest",
-        estimator=pipeline,
+        estimator=pipeline_smote,
         space={
             'o__k_neighbors': hp.uniformint('o__k_neighbors', 2, 5),
             'o__random_state': 25,
-            'o__sampling_strategy': hp.uniform('o__sampling_strategy', 0.1, 0.99),
+            'o__sampling_strategy': hp.uniform('o__sampling_strategy', 0.1, 0.6),
             'u__random_state': 25,
-            'u__sampling_strategy': hp.uniform('u__sampling_strategy', 0.5, 1),
+            'u__sampling_strategy': hp.uniform('u__sampling_strategy', 0.61, 0.99),
             'rfc__n_estimators': hp.uniformint('n_estimators', 125, 250),
             'rfc__max_depth':hp.uniformint('max_depth',12,18),
             'rfc__min_samples_leaf':hp.uniformint('min_samples_leaf',1,7),
@@ -143,11 +150,11 @@ hyperopt_estimators = [
             'rfc__criterion': hp.choice('criterion', ['gini', 'log_loss', 'entropy']),
             'rfc__class_weight': hp.choice('class_weight', ['balanced', None]),
         },
-        max_evals=75,
+        max_evals=60,
     ),
     HyperoptEstimator(
     name="SMOTE pipeline, ohe categorical, with Random Forest",
-    estimator=pipeline_ohe,
+    estimator=pipeline_smote_ohe,
     space={
         'o__k_neighbors': hp.uniformint('o__k_neighbors', 2, 5),
         'o__random_state': 25,
@@ -161,14 +168,26 @@ hyperopt_estimators = [
         'rfc__criterion': hp.choice('criterion', ['gini', 'log_loss', 'entropy']),
         'rfc__class_weight': hp.choice('class_weight', ['balanced', None]),
     },
-    max_evals=75,
+    max_evals=60,
+    ),
+    HyperoptEstimator(
+    name="ohe categorical with Random Forest",
+    estimator=pipeline_ohe,
+    space={
+        'rfc__n_estimators': hp.uniformint('n_estimators', 125, 250),
+        'rfc__max_depth':hp.uniformint('max_depth',12,18),
+        'rfc__min_samples_leaf':hp.uniformint('min_samples_leaf',1,7),
+        'rfc__min_samples_split':hp.uniformint('min_samples_split',2,6),
+        'rfc__criterion': hp.choice('criterion', ['gini', 'log_loss', 'entropy']),
+        'rfc__class_weight': hp.choice('class_weight', ['balanced', None]),
+    },
+    max_evals=60,
     ),
 ]
 
-print(f"\n>>> Tuning a pipeline which steps are:\n"
-      "- SMOTENC\n- undersampling the majority class\n"
-      "- optional ohe-hot encoder of the categorical features\n"
-      "- Random forest classifier\n\n")
+print(
+    f"\n>>> Evaluation of SMOTENC, and OHE impact "
+    "on the random forest classifier")
 
 ########################################################################
 # WARNING: this section only works when the file is run by the python
