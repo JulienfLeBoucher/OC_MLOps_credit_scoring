@@ -44,11 +44,9 @@ from imblearn.under_sampling import RandomUnderSampler
 experiment_name = 'random_forest'
 
 # utils.load_split_clip_scale_and_impute() parameters.
-# Here, ohe is set to False because it will be introduced in the 
-# imblearn pipeline or not.
+# Here, ohe is set to False and handled apart, thanks to pipelines.
 # Of course, more combinations exist, but for time motivations, I have
 # chosen to explore only those.
-
 pre_processing_params = [
     dict(
         predictors=None, 
@@ -103,7 +101,11 @@ categorical_features = [
     'WEEKDAY_APPR_PROCESS_START'
 ]
 
-ohe = OneHotEncoder(sparse_output=False, dtype='int16')
+ohe = OneHotEncoder(
+    sparse_output=False,
+    handle_unknown='ignore',
+    dtype='int16'
+)
 # create some minority synthetic individuals to yield a rate indicated in sampling_strategy
 over = SMOTENC(
     categorical_features=categorical_features,
@@ -119,20 +121,12 @@ ohe_cat = ColumnTransformer(
     remainder="passthrough",
 )
 
-pipeline_smote = Pipeline(
-    steps = [('o', over), ('u', under), ('rfc', rf)]
-)
+pipeline_smote = Pipeline(steps = [('o', over), ('u', under), ('rfc', rf)])
+pipeline_ohe = Pipeline(steps=[('ohe', ohe_cat), ('rfc', rf)])
 pipeline_smote_ohe = Pipeline(
     steps=[('o', over), ('u', under), ('ohe', ohe_cat), ('rfc', rf)]
 )
-pipeline_ohe = Pipeline(
-    steps=[('ohe', ohe_cat), ('rfc', rf)]
-)
 
-
-
-# Hyperparameters spaces are similar, only the one-hot encoder step 
-# differs from the 2 pipelines.
 hyperopt_estimators = [
     HyperoptEstimator(
         name="SMOTE pipeline with Random Forest",
@@ -150,7 +144,7 @@ hyperopt_estimators = [
             'rfc__criterion': hp.choice('criterion', ['gini', 'log_loss', 'entropy']),
             'rfc__class_weight': hp.choice('class_weight', ['balanced', None]),
         },
-        max_evals=60,
+        max_evals=100,
     ),
     HyperoptEstimator(
     name="SMOTE pipeline, ohe categorical, with Random Forest",
@@ -158,9 +152,9 @@ hyperopt_estimators = [
     space={
         'o__k_neighbors': hp.uniformint('o__k_neighbors', 2, 5),
         'o__random_state': 25,
-        'o__sampling_strategy': hp.uniform('o__sampling_strategy', 0.1, 0.99),
+        'o__sampling_strategy': hp.uniform('o__sampling_strategy', 0.1, 0.6),
         'u__random_state': 25,
-        'u__sampling_strategy': hp.uniform('u__sampling_strategy', 0.5, 1),
+        'u__sampling_strategy': hp.uniform('u__sampling_strategy', 0.61, 0.99),
         'rfc__n_estimators': hp.uniformint('n_estimators', 125, 250),
         'rfc__max_depth':hp.uniformint('max_depth',12,18),
         'rfc__min_samples_leaf':hp.uniformint('min_samples_leaf',1,7),
@@ -168,7 +162,7 @@ hyperopt_estimators = [
         'rfc__criterion': hp.choice('criterion', ['gini', 'log_loss', 'entropy']),
         'rfc__class_weight': hp.choice('class_weight', ['balanced', None]),
     },
-    max_evals=60,
+    max_evals=100,
     ),
     HyperoptEstimator(
     name="ohe categorical with Random Forest",
@@ -181,7 +175,7 @@ hyperopt_estimators = [
         'rfc__criterion': hp.choice('criterion', ['gini', 'log_loss', 'entropy']),
         'rfc__class_weight': hp.choice('class_weight', ['balanced', None]),
     },
-    max_evals=60,
+    max_evals=100,
     ),
 ]
 
