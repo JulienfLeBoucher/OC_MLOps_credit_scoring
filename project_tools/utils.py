@@ -986,24 +986,6 @@ def make_cv_predictions_evaluate_and_log(
             mlflow.set_tags(mlflow_tags)
         return metrics
 
-
-def log_best(run: mlflow.entities.Run, metric: str) -> None:
-    """Log the best parameters from optimization to the parent experiment.
-
-    Args:
-        run: current run to log metrics
-        metric: name of metric to select best and log
-    """
-    client = mlflow.tracking.MlflowClient()
-    runs = client.search_runs(
-        [run.info.experiment_id],
-        "tags.mlflow.parentRunId = '{run_id}' ".format(run_id=run.info.run_id)
-    )
-
-    best_run = min(runs, key=lambda run: run.data.metrics[metric])
-
-    mlflow.set_tag("best_run", best_run.info.run_id)
-    mlflow.log_metric(f"best_{metric}", best_run.data.metrics[metric])
     
     
     
@@ -1080,8 +1062,32 @@ def get_runs_information(
         return results[col_sel]
     else:
         return results
-        
 
 
-
-
+def add_best_run_tag(
+    exp_name: str,
+    light_version: bool=False,
+    sort_Scorer: Scorer=my_Scorers['loss_of_income'],
+    metric_prefix: str='CV_'
+) -> None:
+    """
+    In an experiment, find the best run for each parent run and add a
+    tag.
+    """
+    exp_id = get_exp_id_from_exp_name(exp_name)
+    results = get_runs_information(
+        exp_id,
+        light_version=light_version,
+        sort_Scorer=sort_Scorer,
+        metric_prefix=metric_prefix,
+    )
+    best_run_ids = (
+        results
+        .reset_index()
+        .groupby('parent_run_name')
+        .first()
+        .run_id
+    )
+    for best_run_id in best_run_ids:
+        with mlflow.start_run(run_id=best_run_id):
+            mlflow.set_tag('best_run', 'best_run')
