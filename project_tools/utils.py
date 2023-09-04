@@ -1,3 +1,4 @@
+import ast
 import re
 import gc
 import numpy as np
@@ -1036,6 +1037,14 @@ def get_runs_information(
         results['tags.mlflow.parentRunId']
         .apply(get_run_name_from_run_id)
     )
+    # Expand the information contained in tags.pre_processing 
+    df_pp = (
+        results['tags.pre_processing']
+        .astype('str')
+        .apply(lambda x: ast.literal_eval(x))
+        .apply(pd.Series)
+    )
+    results = pd.concat([results, df_pp], axis=1)
     # Sort depending if we want to maximize or minimize the metric
     results = (
         results
@@ -1064,15 +1073,18 @@ def get_runs_information(
         return results
 
 
-def add_best_run_tag(
+def add_best_run_tag_per_(
     exp_name: str,
     light_version: bool=False,
     sort_Scorer: Scorer=my_Scorers['loss_of_income'],
     metric_prefix: str='CV_'
 ) -> None:
     """
-    In an experiment, find the best run for each parent run and add a
+    In an experiment, find the best run for each parent_run_name and add a
     tag.
+    
+    WARNING : "it works" but it might change the end date, and thus
+    the fit_time_s. May be an access with the mlflowClient is preferable.
     """
     exp_id = get_exp_id_from_exp_name(exp_name)
     results = get_runs_information(
