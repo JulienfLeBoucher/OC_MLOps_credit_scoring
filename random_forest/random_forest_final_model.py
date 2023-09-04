@@ -77,7 +77,7 @@ hyperopt_estimators = [
         'min_samples_split':hp.uniformint('min_samples_split', 4, 6),
         'class_weight': hp.choice('class_weight', ['balanced', None]),
         'max_samples': scope.int(
-            hp.quniform('max_depth', 1_000, 10_000, 1_000)
+            hp.quniform('max_samples', 1_000, 10_000, 1_000)
         ),
         
     },
