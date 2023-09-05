@@ -400,6 +400,8 @@ def load_split_clip_scale_and_impute_data(
             X_test.loc[:, numerical_features],
             method=imputation_method
         )
+    else:
+        print('>>> No imputation')
     return (
         X_train,
         X_test,
