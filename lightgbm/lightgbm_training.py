@@ -22,13 +22,13 @@ import sys
 from hyperopt import hp
 from hyperopt.pyll import scope
 # Append path to find my_scorers and config
-sys.path.append('./random_forest')
+sys.path.append('./lightgbm')
 import my_scorers
 import config
 from project_tools import utils
 from project_tools.hyperopt_estimators import HyperoptEstimator
 from project_tools.scorer import Scorer
-
+from numpy import log
 from lightgbm import LGBMClassifier
 ########################################################################
 # MAIN PARAMETER ZONE
@@ -68,18 +68,27 @@ lightgbm_eval_metric = utils.convert_scorer_to_lightgbm_eval_metric(
     optimization_scorer
 )
 
+categorical_features = [
+    'CODE_GENDER', 'FLAG_OWN_CAR', 'NAME_CONTRACT_TYPE',
+    'NAME_EDUCATION_TYPE', 'NAME_FAMILY_STATUS', 'NAME_HOUSING_TYPE',
+    'NAME_INCOME_TYPE', 'OCCUPATION_TYPE', 'ORGANIZATION_TYPE',
+    'WEEKDAY_APPR_PROCESS_START'
+]
+
 hyperopt_estimators = [
     HyperoptEstimator(
         name="LightGBM Classifier",
         estimator=LGBMClassifier(
             objective='binary',
+            metric="None", 
+            # first_metric_only=True,
             nthread=-1,
             n_estimators=10_000,
             random_state= 103,
             verbosity=0
         ),
         space={
-                'boosting_type': hp.choice('boosting_type', ['gbdt', 'dart', 'goss']),
+                'boosting_type': hp.choice('boosting_type', ['gbdt', 'goss']),
                 'num_leaves': hp.uniformint('num_leaves', 10, 100),
                 'max_depth': hp.uniformint('max_depth', 3, 15),
                 'learning_rate': hp.loguniform('learning_rate', log(0.004), log(0.2)),
@@ -95,12 +104,14 @@ hyperopt_estimators = [
         max_evals=10,
         early_stopping_rounds=100,
         eval_metric=lightgbm_eval_metric,
+        categorical_features=categorical_features,
     )
 ]
 
 print(
-    f"\n>>> Find best hyperparameters for the random forest"
-    "classifier\nwith minmax scaler and zero imputation.")
+    f"\n>>> Find best hyperparameters for lightGBMClassifier"
+    "with no preprocessing.\n"
+)
 ########################################################################
 # WARNING: this section only works when the file is run by the python
 # interpreter, otherwise, the mlflow run command does not take that into 

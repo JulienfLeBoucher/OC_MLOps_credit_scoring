@@ -346,6 +346,8 @@ def load_split_clip_scale_and_impute_data(
             X_test[numerical_features], 
             boundaries * 1.1
         )
+    else:
+        boundaries = None
     # If a scaling method is specified, fit the scaler on the train set and
     # transform both train and test set.
     if scaling_method is not None:
@@ -389,6 +391,7 @@ def load_split_clip_scale_and_impute_data(
         print(f'Scaling completed in {time.time()-t0:.3f}s')
     else:
         print('>>> No Scaling')
+        scaler = None
     # Imputation
     if imputation_method is not None:
         (
@@ -402,6 +405,7 @@ def load_split_clip_scale_and_impute_data(
         )
     else:
         print('>>> No imputation')
+        num_imputer = None
     return (
         X_train,
         X_test,
@@ -709,12 +713,12 @@ def convert_scorer_to_lightgbm_eval_metric(scorer):
     """ Adapt a scorer from Scorer class to a callable which output 
     what is expected by the lightgbm Classifier.
     
-    Note: As it expects this signature and not (y_true, y_pred_proba),
-    I can not incorporate thresholds here and I evaluate the yet cutoff 
-    prediction.
+    Note: I am not sure it is wise to threshold here, but I did it 
+    to prevent an error stating that apparently continuous values were
+    returned by the predict method. 
     """
     def lightgbm_scorer(y_true, y_pred):
-        score = scorer.evaluate_predictions(y_true, y_pred)
+        t, score = scorer.find_best_threshold_and_score(y_true, y_pred)
         return(
             scorer.name,
             score,

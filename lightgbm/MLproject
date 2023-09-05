@@ -4,5 +4,5 @@ python_env: python_env.yaml
 
 entry_points:
   main:
-    command: "python lightgbm.py"
+    command: "python lightgbm_training.py"
   
