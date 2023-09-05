@@ -1,7 +1,6 @@
 # Script objective:
 # 
-# Find the best final random forest with minmax scaling and zero 
-# imputation.
+# Find the best lightgbm model without pre-processing.
 #
 #
 # The script can be launched with python or with the `mlflow run` 
@@ -40,7 +39,7 @@ experiment_name = 'lightgbm'
 pre_processing_params = [
     dict(
         predictors=None, 
-        n_sample=None,
+        n_sample=50_000,
         ohe=False,
         clip=False,
         scaling_method=None,
@@ -92,7 +91,7 @@ hyperopt_estimators = [
                 'num_leaves': hp.uniformint('num_leaves', 10, 100),
                 'max_depth': hp.uniformint('max_depth', 3, 15),
                 'learning_rate': hp.loguniform('learning_rate', log(0.004), log(0.2)),
-                'subsample_for_bin': scope.int(hp.quniform('subsample_for_bin', 120000, 300000, 20000)),
+                # 'subsample_for_bin': scope.int(hp.quniform('subsample_for_bin', 120000, 300000, 20000)),
                 'min_child_samples': scope.int(hp.quniform('min_child_samples', 10, 300, 10)),
                 'reg_alpha': hp.uniform('reg_alpha', 0.0, 1.0),
                 'reg_lambda': hp.uniform('reg_lambda', 0.0, 1.0),
