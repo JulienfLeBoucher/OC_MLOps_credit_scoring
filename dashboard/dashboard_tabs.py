@@ -2,12 +2,46 @@ import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 import time
-
+from group import Group
 
 DATA_URI = (
     '/home/louberehc/OCR/projets/7_scoring_model/'
     'pickle_files/features_sample.pkl'
 )
+
+@st.cache_data
+def get_data():
+    """
+    Get the data about of all customers and cache it.
+    Convert values to float64 to avoid later problems.
+    """
+    df = pd.read_pickle(DATA_URI).astype("float64")
+    target = df.pop('TARGET')
+    return df, target
+
+@st.cache_data
+def instantiate_groups():
+    group_list = [
+        Group('group 1', 'Everyone.', None),
+        Group(
+            name='group 2',
+            description="People with same education, occupation and age range.",
+            grouper=['NAME_EDUCATION_TYPE', 'OCCUPATION_TYPE', 'AGE_RANGE']
+        ),
+        Group(
+            name='group 3',
+            description="People with same credit duration, income type and education.",
+            grouper=['CREDIT_TO_ANNUITY_GROUP', 'NAME_INCOME_TYPE', 'NAME_EDUCATION_TYPE']
+        ),
+    ]
+    return group_list
+        
+
+@st.cache_data
+def get_customer_score(customer_data):
+    time.sleep(3)
+    return 0.27, 0.16    
+
 
 def ChangeWidgetFontSize(wgt_txt, wch_font_size = '12px'):
     htmlstr = """<script>var elements = window.parent.document.querySelectorAll('*'), i;
@@ -16,46 +50,26 @@ def ChangeWidgetFontSize(wgt_txt, wch_font_size = '12px'):
 
     htmlstr = htmlstr.replace('|wgt_txt|', "'" + wgt_txt + "'")
     components.html(f"{htmlstr}", height=0, width=0)
-
-
-@st.cache_data
-def get_data():
-    """
-    Get the data about of all customers and cache it.
-    """
-    df = pd.read_pickle(DATA_URI)
-    target = df.pop('TARGET')
-    return df, target
-
-@st.cache_data
-def get_customer_score(customer_data):
-    time.sleep(3)
-    return 0.27, 0.16    
-
-def clear_multisel():
-    # Callback to clear the multiselect multisel in the sidebar
-    # thanks to the button
-    st.session_state.multisel = []
-    return None
+    
+    
 
 
 ###### Config
-st.markdown(
-    """<style>
-div[class*="stRadio"] > label > div[data-testid="stMarkdownContainer"] > p {
-    font-size: 32px;
-}
-    </style>
-    """, unsafe_allow_html=True
-)
+# Change tab font-size
+css = '''
+<style>
+    .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p {
+    font-size:1.15rem;
+    }
+</style>
+'''
+st.markdown(css, unsafe_allow_html=True)
 
 
 ###### Global variable definitions
 df, target = get_data()
 valid_customer_ids = list(df.index)
-fts_by_model_importance = df.columns
-# Instantiation to avoid errors.
-customer_data = None
+fts_by_model_importance = df.columns # TODO: change with model global interp.
 
 with st.sidebar:
     # Selection of the customer
@@ -102,20 +116,11 @@ with st.sidebar:
 # start tabs       
 tab1, tab2, tab3 = st.tabs(
     [
-        "Explore customer's data  ",
-        "Main factors in the model decision  ",
+        "Explore customer's data",
+        "Main factors in the model decision",
         "Compare customer to others",
     ]
 )
-# Change tab font-size
-css = '''
-<style>
-    .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p {
-    font-size:1.15rem;
-    }
-</style>
-'''
-st.markdown(css, unsafe_allow_html=True)
 
 with tab1:
     if customer_id == 'XXXXXX':
@@ -147,51 +152,57 @@ with tab1:
             else:
                 st.write(customer_data.loc[sel_fts])
         
-with tab2:        
-    # st.write("## Major factors in the decision")
-    
-    st.image("https://i.stack.imgur.com/Ftxu7.png")
-    
-    st.write(
-        "A value pushing the decision to the left helps in getting"
-        " a loan. Otherwise, it plays against the customer."
-    )    
-
+with tab2:
+    if customer_id == 'XXXXXX':
+        st.write('')
+    else:        
+        # st.write("## Major factors in the decision")
+        
+        st.image("https://i.stack.imgur.com/Ftxu7.png")
+        
+        st.write(
+            "A value pushing the decision to the left helps in getting"
+            " a loan. Otherwise, it plays against the customer."
+        )    
+        
+########################################################################
+# Select a feature and a group and plot the distribution of the feature
+# inside the group + pinpoint the customer value.
+########################################################################
 with tab3:
-    # 2 columns to select the feature and the group to compare to.
-    col1, col2 = st.columns([1, 1])
-    with col2:
-        st.write("")
-        st.write("")
-        ft = st.selectbox(
-            label="Which feature to compare?",
-            options=fts_by_model_importance,
-        )
-        ChangeWidgetFontSize('Which feature to compare?', '18px')
+    if customer_id == 'XXXXXX':
+        st.write('')
+    else:
+        # Group definitions once and for all thanks to a function with 
+        # a cache_data decorator (avoid reload and duplication)
+        groups = instantiate_groups()
         
+        # Widgets to select the feature and the group to compare 
+        # to inside 2 columns.
+        col1, col2 = st.columns([1, 1])
+        with col2:
+            st.write("")
+            st.write("")
+            sel_ft = st.selectbox(
+                label="Which feature to compare?",
+                options=fts_by_model_importance,
+            )
+            ChangeWidgetFontSize('Which feature to compare?', '18px')
+            
+        with col1:
+            sel_group_name = st.radio(
+                label="Who to compare too?",
+                options=[g.name for g in groups],
+                captions=[g.description for g in groups]
+            )
+            ChangeWidgetFontSize('Who to compare too?', '18px')
         
-    with col1:
-        sel_group = st.radio(
-            "Who to compare too?",
-            [
-                "Everyone.",
-                "People with same education, occupation and age range.",
-                "People with same credit duration, income type and education."
-            ],
+        # Get the Group class and use it to plot.
+        sel_group = [g for g in groups if g.name == sel_group_name][0]
+        fig = sel_group.plot_feature_kde_with_client_value(
+            features_df=df,
+            target=target,
+            customer_id=customer_id,
+            feature_name=sel_ft,
         )
-        ChangeWidgetFontSize('Who to compare too?', '18px')
-    
-    # Define features to groupby
-    group1 = ['NAME_EDUCATION_TYPE', 'OCCUPATION_TYPE', 'AGE_RANGE']
-    group2 = ['CREDIT_TO_ANNUITY_GROUP', 'NAME_INCOME_TYPE', 'NAME_EDUCATION_TYPE']   
-    
-    # Select the others in function of the chosen group.
-    match sel_group:
-        case "everyone":
-            st.write("everyone sel")
-        case "people with same education, occupation and age range":
-            st.write("group1 sel")
-        case "people with same credit duration, income type and education":
-            st.write("group2 sel")
-                            
-
+        st.pyplot(fig)
