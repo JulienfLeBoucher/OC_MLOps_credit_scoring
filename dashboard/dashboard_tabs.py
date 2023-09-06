@@ -1,11 +1,22 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import time
+
 
 DATA_URI = (
     '/home/louberehc/OCR/projets/7_scoring_model/'
     'pickle_files/features_sample.pkl'
 )
+
+def ChangeWidgetFontSize(wgt_txt, wch_font_size = '12px'):
+    htmlstr = """<script>var elements = window.parent.document.querySelectorAll('*'), i;
+                    for (i = 0; i < elements.length; ++i) { if (elements[i].innerText == |wgt_txt|) 
+                        { elements[i].style.fontSize='""" + wch_font_size + """';} } </script>  """
+
+    htmlstr = htmlstr.replace('|wgt_txt|', "'" + wgt_txt + "'")
+    components.html(f"{htmlstr}", height=0, width=0)
+
 
 @st.cache_data
 def get_data():
@@ -26,6 +37,17 @@ def clear_multisel():
     # thanks to the button
     st.session_state.multisel = []
     return None
+
+
+###### Config
+st.markdown(
+    """<style>
+div[class*="stRadio"] > label > div[data-testid="stMarkdownContainer"] > p {
+    font-size: 32px;
+}
+    </style>
+    """, unsafe_allow_html=True
+)
 
 
 ###### Global variable definitions
@@ -67,6 +89,7 @@ with st.sidebar:
         else:
             st.write("Loan rejected")
             
+        st.divider()    
         # Print gauge to tell if close from the decision boundary
         # place for the gauge
         st.write("### Location relative to the decision boundary")
@@ -79,70 +102,96 @@ with st.sidebar:
 # start tabs       
 tab1, tab2, tab3 = st.tabs(
     [
-        "Main factors in the decision  ",
         "Explore customer's data  ",
+        "Main factors in the model decision  ",
         "Compare customer to others",
     ]
 )
+# Change tab font-size
+css = '''
+<style>
+    .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p {
+    font-size:1.15rem;
+    }
+</style>
+'''
+st.markdown(css, unsafe_allow_html=True)
 
 with tab1:
     if customer_id == 'XXXXXX':
         st.write('')
     else:
-    ####################################################################
-    # Middle section : Observe customer major factors to the decision.
-    ####################################################################
-        st.write("## Major factors in the decision")
+        col1, _, col2 = st.columns([1, 0.2, 1])
+        with col2:
+            st.write(
+                "If no features are selected, you can scroll down the table "
+                "to explore the whole data we own about the customer.\n\n"
+                "Otherwise, you are invited to select multiple features with "
+                "the selector right below.\n\n"
+                "*Note* : In the selector, Features are order by their "
+                "importance in the model decision."
+            )
+            # Feature selector        
+            sel_fts = st.multiselect(
+                label='',
+                options=fts_by_model_importance,
+                default=None,
+                key='multisel',
+                placeholder="Select features here.",
+                label_visibility='hidden',
+            )
+        with col1:    
+            # print the data
+            if sel_fts == []:
+                st.write(customer_data)
+            else:
+                st.write(customer_data.loc[sel_fts])
         
-        st.image("https://i.stack.imgur.com/Ftxu7.png")
-        
-        st.write(
-            "A value pushing the decision to the left helps in getting"
-            " a loan. Otherwise, it plays against the customer."
-        )    
-####################################################################
-# Bottom section : compare data to others
-####################################################################
-with tab2:
-    ft = st.selectbox(
-        label="",
-        options=fts_by_model_importance,
-        placeholder="Choose the feature"
-    )
-    # if not ft:
-    #     st.error("Please select a feature.")
-    ft_values = df.loc[:, ft]    
+with tab2:        
+    # st.write("## Major factors in the decision")
+    
+    st.image("https://i.stack.imgur.com/Ftxu7.png")
+    
+    st.write(
+        "A value pushing the decision to the left helps in getting"
+        " a loan. Otherwise, it plays against the customer."
+    )    
 
-####################################################################
-# Left side bar
-####################################################################
-# Display the whole customer data or only selected features 
 with tab3:
-    col1, _, col2 = st.columns([1, 0.2, 1])
+    # 2 columns to select the feature and the group to compare to.
+    col1, col2 = st.columns([1, 1])
     with col2:
-        st.write(
-            "If no features are selected, you can scroll down the table "
-            "to explore the whole data of the customer.\n\n"
-            "Otherwise, you are invited to select multiple features with "
-            "the selector right below.\n\n"
-            "*Note* : In the selectors, Features are order by their "
-            "importance in the model decision."
-        )
-        # Feature selector        
-        sel_fts = st.multiselect(
-            label='',
+        st.write("")
+        st.write("")
+        ft = st.selectbox(
+            label="Which feature to compare?",
             options=fts_by_model_importance,
-            default=None,
-            key='multisel',
-            placeholder="Select features here.",
-            label_visibility='hidden',
         )
-    with col1:    
-        # print the data
-        if sel_fts == []:
-            st.write(customer_data)
-        else:
-            st.write(customer_data.loc[sel_fts])
+        ChangeWidgetFontSize('Which feature to compare?', '18px')
+        
+        
+    with col1:
+        sel_group = st.radio(
+            "Who to compare too?",
+            [
+                "Everyone.",
+                "People with same education, occupation and age range.",
+                "People with same credit duration, income type and education."
+            ],
+        )
+        ChangeWidgetFontSize('Who to compare too?', '18px')
     
-    # st.button('Reset the feature selection', on_click=clear_multisel)
+    # Define features to groupby
+    group1 = ['NAME_EDUCATION_TYPE', 'OCCUPATION_TYPE', 'AGE_RANGE']
+    group2 = ['CREDIT_TO_ANNUITY_GROUP', 'NAME_INCOME_TYPE', 'NAME_EDUCATION_TYPE']   
     
+    # Select the others in function of the chosen group.
+    match sel_group:
+        case "everyone":
+            st.write("everyone sel")
+        case "people with same education, occupation and age range":
+            st.write("group1 sel")
+        case "people with same credit duration, income type and education":
+            st.write("group2 sel")
+                            
+
