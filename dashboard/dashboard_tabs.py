@@ -32,6 +32,8 @@ def clear_multisel():
 df, target = get_data()
 valid_customer_ids = list(df.index)
 fts_by_model_importance = df.columns
+# Instantiation to avoid errors.
+customer_data = None
 
 with st.sidebar:
     # Selection of the customer
@@ -77,26 +79,27 @@ with st.sidebar:
 # start tabs       
 tab1, tab2, tab3 = st.tabs(
     [
-        "Understand main factors\nin the model decision",
-        "Explore customer's data",
+        "Main factors in the decision  ",
+        "Explore customer's data  ",
         "Compare customer to others",
     ]
 )
 
-
 with tab1:
-                    
+    if customer_id == 'XXXXXX':
+        st.write('')
+    else:
     ####################################################################
     # Middle section : Observe customer major factors to the decision.
     ####################################################################
-    st.write("## Major factors in the decision")
-    
-    st.image("https://i.stack.imgur.com/Ftxu7.png")
-    
-    st.write(
-        "A value pushing the decision to the left helps in getting"
-        " a loan. Otherwise, it plays against the customer."
-    )    
+        st.write("## Major factors in the decision")
+        
+        st.image("https://i.stack.imgur.com/Ftxu7.png")
+        
+        st.write(
+            "A value pushing the decision to the left helps in getting"
+            " a loan. Otherwise, it plays against the customer."
+        )    
 ####################################################################
 # Bottom section : compare data to others
 ####################################################################
@@ -115,29 +118,31 @@ with tab2:
 ####################################################################
 # Display the whole customer data or only selected features 
 with tab3:
-    st.write("# Customer data")
-    st.write(
-        "If no features are selected, you can scroll down the table "
-        "to explore the whole data of the customer.\n\n"
-        "Otherwise, you are invited to select multiple features with "
-        "the selector right below.\n\n"
-        "*Note* : In the selectors, Features are order by their "
-        "importance in the model decision."
-    )
-    # Feature selector        
-    sel_fts = st.multiselect(
-        label='',
-        options=fts_by_model_importance,
-        default=None,
-        key='multisel',
-        placeholder="Select features here.",
-        label_visibility='hidden',
-    )
-    # print the data
-    if sel_fts == []:
-        st.write(customer_data)
-    else:
-        st.write(customer_data.loc[sel_fts])
+    col1, _, col2 = st.columns([1, 0.2, 1])
+    with col2:
+        st.write(
+            "If no features are selected, you can scroll down the table "
+            "to explore the whole data of the customer.\n\n"
+            "Otherwise, you are invited to select multiple features with "
+            "the selector right below.\n\n"
+            "*Note* : In the selectors, Features are order by their "
+            "importance in the model decision."
+        )
+        # Feature selector        
+        sel_fts = st.multiselect(
+            label='',
+            options=fts_by_model_importance,
+            default=None,
+            key='multisel',
+            placeholder="Select features here.",
+            label_visibility='hidden',
+        )
+    with col1:    
+        # print the data
+        if sel_fts == []:
+            st.write(customer_data)
+        else:
+            st.write(customer_data.loc[sel_fts])
     
     # st.button('Reset the feature selection', on_click=clear_multisel)
     
