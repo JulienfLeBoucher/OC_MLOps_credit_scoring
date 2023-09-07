@@ -65,6 +65,50 @@ css = '''
 '''
 st.markdown(css, unsafe_allow_html=True)
 
+# To draw the score bar
+svg = """
+<svg width="350" height="100" viewBox="0 0 120 30" version="1.1" xmlns="http://www.w3.org/2000/svg">
+<defs>
+    <linearGradient id="Gradient1">
+    <stop class="stop1" offset="0%" />
+    <stop class="stop2" offset="40%" />
+    <stop class="stop3" offset="50%" />
+    <stop class="stop4" offset="60%" />
+    <stop class="stop5" offset="100%" />
+    </linearGradient>
+</defs>
+<style>
+    #rect1 {
+    fill: url(#Gradient1);
+    }
+    .stop1 {
+    stop-color: mediumblue;
+    }
+    .stop2 {
+    stop-color: royalblue;
+    }
+    .stop3 {
+    stop-color: lightgray;
+    }
+    .stop4 {
+    stop-color: indianred;
+    }
+    .stop5 {
+    stop-color: firebrick;
+    }
+</style>
+
+<rect id="rect1" x="0" y="15" rx="2" ry="2" width="100" height="15" />
+<path d="M50,15 v+15" fill="yellow" stroke="black" stroke-width="1" />
+<text x="4" y="21" font-size="5px">No repayment</text>
+<text x="6" y="27" font-size="5px">difficulties</text>
+<text x="70" y="21" font-size="5px">Repayment</text>
+<text x="72" y="27" font-size="5px">difficulties</text>
+<polygon points="40,13 38,9 42,9" style="fill:orange;stroke:black;stroke-width:0.2" />
+<text x="23" y="5" font-size="5px" fill="orange">Customer score</text>
+</svg>
+"""
+
 
 ###### Global variable definitions
 df, target = get_data()
@@ -96,21 +140,20 @@ with st.sidebar:
             # Send request to the model API 
             customer_score, model_threshold = get_customer_score(customer_data) 
         # print the result
-        st.write("### Model decision")
+        st.write("### Model prediction")
         # Print the model decision
         if customer_score < model_threshold:
-            st.write("Loan accepted")
+            st.write("Credit application ACCEPTED.")
         else:
-            st.write("Loan rejected")
+            st.write("Credit application REJECTED.")
             
         st.divider()    
         # Print gauge to tell if close from the decision boundary
         # place for the gauge
-        st.write("### Location relative to the decision boundary")
-        st.image(
-            'https://www.tibco.com/sites/tibco/files/media_entity/2022-01/GaugeChart-01.svg',
-            use_column_width=True
-        )
+        st.write("### Score relative to the decision boundary")
+        
+        st.markdown(svg, unsafe_allow_html=True)
+        
             
         
 # start tabs       

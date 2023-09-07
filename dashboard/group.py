@@ -2,7 +2,7 @@ from typing import List
 import pandas as pd
 from seaborn import kdeplot
 import matplotlib.pyplot as plt
-from numpy import nan
+from numpy import isfinite
 
 class Group:
     """ Group data structure."""
@@ -49,6 +49,7 @@ class Group:
         # get group relative data 
         group_data = self.get_group_data(features_df, customer_id)
         # Join the relevant feature of the group and the target,
+        # and make sure to keep only group data.
         group_feature = group_data.loc[:, feature_name]
         group_feature = (
             pd.concat([group_feature, target], axis=1)
@@ -66,10 +67,15 @@ class Group:
             legend=True,
         )
         # Custom 
+        title = (
+            f'Distributions per customer type of {feature_name}\n'
+            f'considering {self.description.lower()}\n'
+        )
         ax.get_yaxis().set_visible(False)
         _, y_max = ax.get_ylim()
         x_min, x_max = ax.get_xlim()
-        if customer_val is not nan:
+        if isfinite(customer_val):
+            # Draw an arrow pinpointing the customer value
             ax.annotate(
                 'Customer value',
                 xy=(customer_val, 0),
@@ -80,14 +86,11 @@ class Group:
         else:
             ax.annotate(
                 'Unknown Customer value',
-                xy=((x_min + x_max)/2, 0.1*y_max),
+                xy=((x_min + x_max)/2, 0.05*y_max),
                 ha='center',
             )
             
-        plt.title(
-            f'Distributions per customer type of {feature_name}\n'
-            f'considering {self.description.lower()}\n'
-        )
+        plt.title(title)
         # plt.legend(
         #     title='Customers:',
         #     loc='best',
