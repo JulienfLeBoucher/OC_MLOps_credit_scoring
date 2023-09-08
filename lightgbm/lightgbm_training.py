@@ -79,7 +79,7 @@ hyperopt_estimators = [
         name="LightGBM Classifier",
         estimator=LGBMClassifier(
             objective='binary',
-            metric="None", 
+            # metric="None", 
             # first_metric_only=True,
             nthread=-1,
             n_estimators=10_000,
@@ -102,9 +102,9 @@ hyperopt_estimators = [
                 'min_split_gain': hp.uniform('min_split_gain', 0.03, 0.05),
                 'subsample': hp.uniform('subsample', 0.8, 1.0)
             },
-        max_evals=10,
+        max_evals=20,
         early_stopping_rounds=100,
-        eval_metric=lightgbm_eval_metric,
+        eval_metric='auc',
         categorical_features=categorical_features,
     )
 ]
