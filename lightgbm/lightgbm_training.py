@@ -39,7 +39,7 @@ experiment_name = 'lightgbm'
 pre_processing_params = [
     dict(
         predictors=None, 
-        n_sample=None,
+        n_sample=30_000,
         ohe=False,
         clip=False,
         scaling_method=None,
