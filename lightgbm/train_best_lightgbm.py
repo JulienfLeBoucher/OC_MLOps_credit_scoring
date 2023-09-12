@@ -17,11 +17,12 @@ from project_tools.scorer import Scorer
 ########################################################################
 # MLflow experiment name
 experiment_name = 'test_best_lightgbm'
+registered_model_name = 'lgbm_test_2'
 
 # utils.load_split_clip_scale_and_impute() parameters.
 pre_processing_params = dict(
         predictors=None, 
-        n_sample=None,
+        n_sample=3_000,
         ohe=False,
         clip=False,
         scaling_method=None,
@@ -154,5 +155,9 @@ with mlflow.start_run(experiment_id=exp_id) as run:
     if mlflow_tags is not None:
         mlflow.set_tags(mlflow_tags) 
     # Model logging    
-    artifact_path='lgbm_model'    
-    mlflow.lightgbm.log_model(lgbm, artifact_path, signature=signature)
+    artifact_path='model'    
+    mlflow.lightgbm.log_model(
+        lgbm, 
+        artifact_path=artifact_path,
+        signature=signature,
+        registered_model_name=registered_model_name)
