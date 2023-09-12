@@ -21,7 +21,7 @@ experiment_name = 'test_best_lightgbm'
 # utils.load_split_clip_scale_and_impute() parameters.
 pre_processing_params = dict(
         predictors=None, 
-        n_sample=2000,
+        n_sample=None,
         ohe=False,
         clip=False,
         scaling_method=None,
