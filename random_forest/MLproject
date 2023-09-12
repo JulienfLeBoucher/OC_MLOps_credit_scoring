@@ -1,0 +1,11 @@
+name: Random Forest pipelines tuning.
+
+python_env: python_env.yaml
+
+entry_points:
+  random_forest_SMOTE:
+    command: "python random_forest_smote.py"
+  random_forest_scaling_and_imputation:
+    command: "python random_forest_imputation_and_scaling_variation.py"
+  random_forest_final_model:
+    command: "python random_forest_final_model.py"

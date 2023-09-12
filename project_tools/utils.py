@@ -1,3 +1,4 @@
+import ast
 import re
 import gc
 import numpy as np
@@ -290,6 +291,7 @@ def load_split_clip_scale_and_impute_data(
     # Process categorical features based on the X_train information.
     ################################################################
     # Imputation (Use 1NN imputer on LE categorical features)
+    print('>>> Imputing categorical features')
     cat_imputer = KNNImputer(n_neighbors=1)
     cat_imputer.fit(X_train[categorical_features])
     X_train.loc[:, categorical_features] = (
@@ -344,6 +346,8 @@ def load_split_clip_scale_and_impute_data(
             X_test[numerical_features], 
             boundaries * 1.1
         )
+    else:
+        boundaries = None
     # If a scaling method is specified, fit the scaler on the train set and
     # transform both train and test set.
     if scaling_method is not None:
@@ -387,6 +391,7 @@ def load_split_clip_scale_and_impute_data(
         print(f'Scaling completed in {time.time()-t0:.3f}s')
     else:
         print('>>> No Scaling')
+        scaler = None
     # Imputation
     if imputation_method is not None:
         (
@@ -398,6 +403,9 @@ def load_split_clip_scale_and_impute_data(
             X_test.loc[:, numerical_features],
             method=imputation_method
         )
+    else:
+        print('>>> No imputation')
+        num_imputer = None
     return (
         X_train,
         X_test,
@@ -705,12 +713,12 @@ def convert_scorer_to_lightgbm_eval_metric(scorer):
     """ Adapt a scorer from Scorer class to a callable which output 
     what is expected by the lightgbm Classifier.
     
-    Note: As it expects this signature and not (y_true, y_pred_proba),
-    I can not incorporate thresholds here and I evaluate the yet cutoff 
-    prediction.
+    Note: I am not sure it is wise to threshold here, but I did it 
+    to prevent an error stating that apparently continuous values were
+    returned by the predict method. 
     """
     def lightgbm_scorer(y_true, y_pred):
-        score = scorer.evaluate_predictions(y_true, y_pred)
+        t, score = scorer.find_best_threshold_and_score(y_true, y_pred)
         return(
             scorer.name,
             score,
@@ -985,24 +993,6 @@ def make_cv_predictions_evaluate_and_log(
             mlflow.set_tags(mlflow_tags)
         return metrics
 
-
-def log_best(run: mlflow.entities.Run, metric: str) -> None:
-    """Log the best parameters from optimization to the parent experiment.
-
-    Args:
-        run: current run to log metrics
-        metric: name of metric to select best and log
-    """
-    client = mlflow.tracking.MlflowClient()
-    runs = client.search_runs(
-        [run.info.experiment_id],
-        "tags.mlflow.parentRunId = '{run_id}' ".format(run_id=run.info.run_id)
-    )
-
-    best_run = min(runs, key=lambda run: run.data.metrics[metric])
-
-    mlflow.set_tag("best_run", best_run.info.run_id)
-    mlflow.log_metric(f"best_{metric}", best_run.data.metrics[metric])
     
     
     
@@ -1053,6 +1043,14 @@ def get_runs_information(
         results['tags.mlflow.parentRunId']
         .apply(get_run_name_from_run_id)
     )
+    # Expand the information contained in tags.pre_processing 
+    df_pp = (
+        results['tags.pre_processing']
+        .astype('str')
+        .apply(lambda x: ast.literal_eval(x))
+        .apply(pd.Series)
+    )
+    results = pd.concat([results, df_pp], axis=1)
     # Sort depending if we want to maximize or minimize the metric
     results = (
         results
@@ -1079,8 +1077,35 @@ def get_runs_information(
         return results[col_sel]
     else:
         return results
-        
 
 
-
-
+def add_best_run_tag_per_(
+    exp_name: str,
+    light_version: bool=False,
+    sort_Scorer: Scorer=my_Scorers['loss_of_income'],
+    metric_prefix: str='CV_'
+) -> None:
+    """
+    In an experiment, find the best run for each parent_run_name and add a
+    tag.
+    
+    WARNING : "it works" but it might change the end date, and thus
+    the fit_time_s. May be an access with the mlflowClient is preferable.
+    """
+    exp_id = get_exp_id_from_exp_name(exp_name)
+    results = get_runs_information(
+        exp_id,
+        light_version=light_version,
+        sort_Scorer=sort_Scorer,
+        metric_prefix=metric_prefix,
+    )
+    best_run_ids = (
+        results
+        .reset_index()
+        .groupby('parent_run_name')
+        .first()
+        .run_id
+    )
+    for best_run_id in best_run_ids:
+        with mlflow.start_run(run_id=best_run_id):
+            mlflow.set_tag('best_run', 'best_run')

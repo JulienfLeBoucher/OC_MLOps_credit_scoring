@@ -1,0 +1,11 @@
+name: lightGBM
+
+python_env: python_env.yaml
+
+entry_points:
+  main:
+    command: "python lightgbm_training.py"
+  log_model:
+    command: "python train_best_lightgbm.py"
+
+  

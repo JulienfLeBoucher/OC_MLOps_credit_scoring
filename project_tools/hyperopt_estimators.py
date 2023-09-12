@@ -1,4 +1,4 @@
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, List
 import xgboost
 import lightgbm
 
@@ -29,6 +29,7 @@ class HyperoptEstimator:
         max_evals: int=10,
         early_stopping_rounds: int=None,  
         eval_metric=None,
+        categorical_features: List[str]=None,
     ):
         """
         - name: serve as the model name and the mlflow parent run.
@@ -40,6 +41,7 @@ class HyperoptEstimator:
         improved for that many rounds.
         - eval_metric: The evaluation metric to track performance on the
         train and valid sets.
+        - categorical features list.
         
         """
         assert estimator is not None, f"No estimator passed."
@@ -49,7 +51,9 @@ class HyperoptEstimator:
         self.space = space
         self.max_evals = max_evals
         self.early_stopping_rounds = early_stopping_rounds  
-        self.eval_metric = eval_metric,
+        self.eval_metric = eval_metric
+        self.categorical_features = categorical_features
+        
 
         # Actions
         
@@ -104,20 +108,36 @@ class HyperoptEstimator:
    
     
     def fit_lightgbm(self, X_train, y_train, X_valid, y_valid):
-        self.estimator.fit(
-            X_train,
-            y_train,
-            eval_set=[(X_train, y_train), (X_valid, y_valid)],
-            eval_names=['training', 'validation'],
-            #TODO: test and validate with custom metric?
-            eval_metric=[self.eval_metric], 
-            callbacks=[
-                lightgbm.early_stopping(
-                    self.early_stopping_rounds,
-                    first_metric_only=True
-                )
-            ],
-        )
+        if self.categorical_features is None:
+            self.estimator.fit(
+                X_train,
+                y_train,
+                eval_set=[(X_train, y_train), (X_valid, y_valid)],
+                eval_names=['training', 'validation'],
+                #TODO: test and validate with custom metric?
+                eval_metric=self.eval_metric, 
+                callbacks=[
+                    lightgbm.early_stopping(
+                        self.early_stopping_rounds,
+                    )
+                ],
+            )
+        else:
+            self.estimator.fit(
+                X_train,
+                y_train,
+                eval_set=[(X_train, y_train), (X_valid, y_valid)],
+                eval_names=['training', 'validation'],
+                #TODO: test and validate with custom metric?
+                eval_metric=self.eval_metric, 
+                categorical_feature=self.categorical_features,
+                callbacks=[
+                    lightgbm.early_stopping(
+                        self.early_stopping_rounds,
+                    )
+                ],
+            )
+            
    
     def predict_proba(self, X):
         """ Predict proba, and get best model config to do so if
