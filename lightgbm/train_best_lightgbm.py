@@ -1,5 +1,6 @@
 import mlflow
 from mlflow.models import infer_signature
+import lightgbm
 from lightgbm import LGBMClassifier
 
 import sys
@@ -18,16 +19,19 @@ from project_tools.scorer import Scorer
 experiment_name = 'test_best_lightgbm'
 
 # utils.load_split_clip_scale_and_impute() parameters.
-pre_processing_params = [
-    dict(
+pre_processing_params = dict(
         predictors=None, 
         n_sample=2000,
         ohe=False,
         clip=False,
         scaling_method=None,
         imputation_method=None,
-    ),
-]
+)
+
+# Tags
+mlflow_tags= {
+    'pre_processing': str(pre_processing_params)
+}
 
 # Load the data
 print('>>>>>> Load and pre-process raw features <<<<<<\n')
@@ -101,7 +105,7 @@ with mlflow.start_run(experiment_id=exp_id) as run:
     # Fit the model
     lgbm.fit(
         X_train_pp,
-        y_train_pp,
+        y_train,
         eval_set=[(X_train_pp, y_train), (X_test_pp, y_test)],
         eval_names=['training', 'validation'],
         eval_metric='auc',
@@ -115,11 +119,10 @@ with mlflow.start_run(experiment_id=exp_id) as run:
     
     # Define the model signature
     signature = infer_signature(X_train_pp, y_pred_train)
-    print(f'signature: {signature}')
     
     # Evaluate
     # Search best threshold and score for each scorer on the training set:
-    metrics_= compute_scorers_best_threshold_and_score(
+    metrics_= utils.compute_scorers_best_threshold_and_score(
         scorers,
         y_train,
         y_pred_train[:, 1]
