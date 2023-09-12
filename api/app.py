@@ -1,29 +1,20 @@
-from flask import Flask#, render_template, jsonify
-import json
+from flask import Flask, jsonify
 import pandas as pd
+import api_utils
 
-import mlflow.pyfunc
-import pickle
-import json
-import requests
-
+########################################################################
+# Variables
+########################################################################
 DEBUG = True
-
-app = Flask(__name__)
-
-
-def load_model(model_name: str, stage: str):
-    """ Load the model from the artifacts in the MLflow model registry """
-    return mlflow.pyfunc.load_model(model_uri=f"models:/{model_name}/{stage}")
-
-
-def load_data(DATA_PATH):
-    """ Load both the features and the target associated to customers """
-    df = pd.read_pickle(DATA_PATH).astype("float64")
-    target = df.pop('TARGET')
-    return df, target
-
-
+# Path to find model information
+MLFLOW_TRACKING_URI = "/home/louberehc/OCR/projets/7_scoring_model/mlruns"
+# Choose the model in the MLflow registry
+model_name = "lgbm_test_2"
+stage = "Staging"
+version = 2
+# Choose the data to consider and load in the app
+APP_DATA_PATH = "/home/louberehc/OCR/projets/7_scoring_model/pickle_files/reduced_data.pkl"
+########################################################################
 def shutdown_server():
     # https://stackoverflow.com/questions/15562446/how-to-stop-flask-application-without-using-ctrl-c
     func = request.environ.get('werkzeug.server.shutdown')
@@ -32,36 +23,60 @@ def shutdown_server():
     func()
     
 
-# Load model and data
-model_name = "lgbm_test"
-stage = "Staging"
-APP_DATA_PATH = "/home/louberehc/OCR/projets/7_scoring_model/pickle_files/reduced_data.pkl"
+# Set the Mlflow tracking URI
+api_utils.set_mlflow_tracking_URI(MLFLOW_TRACKING_URI)
 
-model = load_model(model_name, stage)
-features, target = load_data(APP_DATA_PATH)
+# Instantiate the flask object
+app = Flask(__name__)
+    
+    
+# Load the model 
+model_run_id = (
+    api_utils
+    .get_model_run_id_from_name_stage_version(model_name, stage, version)
+)
+model_uri = api_utils.make_model_uri(model_run_id)
+model = api_utils.load_model(model_uri)
+# Get model threshold
+model_threshold = api_utils.get_model_threshold(model_run_id)
+
+# Load data
+features, target = api_utils.load_data(APP_DATA_PATH)
 valid_customer_ids = features.index
 
 
 @app.route("/")
-def hello():
-    return "Hello World!"
+def welcome():
+    return (
+        "Welcome! Go to the '/prediction/<customer_id>' "
+        "to get a model inference."
+    )
+
 
 @app.route('/prediction/')
 def print_id_list():
-    return f'The list of valid client ids :\n\n{list(features.index)}'
+    return f'The list of valid client ids :\n\n{list(valid_customer_ids)}'
 
-# Note : the following should automatically call jsonify on the dict.
-@app.route('/prediction/<int:id_client>')
-def prediction(id_client):
-    if id_client in valid_customer_ids:
-        customer_pred = {
-            'customer_id': id_client,
-            'customer_score': 0.48,
-        }
+
+@app.route('/prediction/<int:customer_id>')
+def prediction(customer_id):
+    if customer_id in valid_customer_ids:
         #return f'valid client: {id_client}'
-        return customer_pred
+        proba = api_utils.get_customer_proba(model, features, customer_id)
+        customer_score_info = {
+            'customer_id': customer_id,
+            'proba_risk_class': proba,
+            'model_threshold': model_threshold,
+            'customer_class': 'no_risk' if proba <= model_threshold else 'risk' 
+        }
+        return jsonify(customer_score_info)
     else:
-        return 'no valid client number'
+        return 'Customer_id is not valid.'
+
+
+@app.get('/data')
+def send_data():
+    return features, target
     
 
 @app.get('/shutdown')
