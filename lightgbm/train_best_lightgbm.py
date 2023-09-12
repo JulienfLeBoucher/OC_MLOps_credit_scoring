@@ -155,9 +155,9 @@ with mlflow.start_run(experiment_id=exp_id) as run:
     if mlflow_tags is not None:
         mlflow.set_tags(mlflow_tags) 
     # Model logging    
-    artifact_path='model'    
-    mlflow.lightgbm.log_model(
+    mlflow.sklearn.log_model(
         lgbm, 
-        artifact_path=artifact_path,
+        artifact_path='model',
         signature=signature,
-        registered_model_name=registered_model_name)
+        registered_model_name=registered_model_name
+    )
