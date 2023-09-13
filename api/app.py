@@ -1,5 +1,6 @@
 from flask import Flask, jsonify
 import pandas as pd
+import shap
 import api_utils
 
 ########################################################################
@@ -37,12 +38,27 @@ model_run_id = (
 )
 model_uri = api_utils.make_model_uri(model_run_id)
 model = api_utils.load_model(model_uri)
+
 # Get model threshold
 model_threshold = api_utils.get_model_threshold(model_run_id)
 
 # Load data
 features, target = api_utils.load_data(APP_DATA_PATH)
 valid_customer_ids = features.index
+
+# Get model Shap interpretability
+# # print the JS visualization code to the notebook
+# shap.initjs()
+explainer = shap.TreeExplainer(model)
+# shap values explainer with 3 fiels (values, base_values, data)
+sv = explainer(features)
+# Retain explanations only for being in the positive class.
+exp = shap.Explanation(
+    sv.values[:,:,1], 
+    sv.base_values[:,1], 
+    data=X_train_pp.values, 
+    feature_names=X_train_pp.columns
+)
 
 
 @app.route("/")
@@ -58,26 +74,41 @@ def print_id_list():
     return f'The list of valid client ids :\n\n{list(valid_customer_ids)}'
 
 
+@app.get('/model_info')
+def model_info():
+    return jsonify({
+        'name': model_name,
+        'stage': stage,
+        'version': version,
+        'type': type(model).__name__,
+        'decision_threshold': model_threshold
+    })
+
+
 @app.route('/prediction/<int:customer_id>')
 def prediction(customer_id):
     if customer_id in valid_customer_ids:
         #return f'valid client: {id_client}'
         proba = api_utils.get_customer_proba(model, features, customer_id)
-        customer_score_info = {
-            'customer_id': customer_id,
+        customer_info = {
+            'id': customer_id,
             'proba_risk_class': proba,
-            'model_threshold': model_threshold,
-            'customer_class': 'no_risk' if proba <= model_threshold else 'risk' 
+            'class': 'no_risk' if proba <= model_threshold else 'risk' 
         }
-        return jsonify(customer_score_info)
+        return jsonify(customer_info)
     else:
         return 'Customer_id is not valid.'
 
 
 @app.get('/data')
 def send_data():
-    return features, target
+    return features.to_dict()
     
+
+@app.get('/target')
+def send_target():
+    return pd.DataFrame(target).to_dict()
+
 
 @app.get('/shutdown')
 def shutdown():
