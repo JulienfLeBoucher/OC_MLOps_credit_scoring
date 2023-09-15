@@ -9,6 +9,8 @@ import time
 from group import Group
 import random
 import base64
+from PIL import Image
+import re
 import visual_elem
 
 DEBUG = True
@@ -111,6 +113,22 @@ def instantiate_groups():
         ),
     ]
     return group_list
+
+
+def display_base64_enc_img(img_enc_str, width, height):
+    # First get the image string without the prefix
+    image_data = re.sub('^data:image/.+;base64,', '', img_enc_str)
+    # Decode and open the image with pillow
+    image = Image.open(io.BytesIO(base64.b64decode(image_data)))
+    # display the image with streamlit, resizing it if necessary
+    st.image(image.resize((width,height)))
+
+    
+@st.cache_data    
+def get_global_shap_image_enc_str():
+    url = urljoin(API_ROOT, 'global_shap')
+    r = requests.get(url)
+    return r.text
 
 
 def ChangeWidgetFontSize(wgt_txt, wch_font_size = '12px'):
@@ -228,7 +246,7 @@ with tab1:
     if customer_id == 'XXXXXX':
         st.write('')
     else:
-        col1, _, col2 = st.columns([1, 0.2, 1])
+        col1, _, col2 = st.columns([1, 0.1, 0.7])
         with col2:
             st.write(
                 "If no features are selected, you can scroll down the table "
@@ -250,23 +268,44 @@ with tab1:
         with col1:    
             # print the data
             if sel_fts == []:
-                st.write(customer_data)
+                st.dataframe(
+                    pd.DataFrame(customer_data)
+                    .style
+                    .set_properties(subset=['Value'], **{'width': '100px'})
+                    .format(precision=2, thousands=",", decimal="."),
+                    width=650,
+                )
             else:
-                st.write(customer_data.loc[sel_fts])
+                st.write(
+                    pd.DataFrame(customer_data.loc[sel_fts])
+                    .style
+                    .format(precision=2, thousands=",", decimal=".")
+                    .set_properties(subset=['Value'], **{'width': '100px'}),
+                    width=650,
+                )
                 
         
 with tab2:
     if customer_id == 'XXXXXX':
         st.write('')
-    else:        
-        # st.write("## Major factors in the decision")
+    else: 
+        ChangeWidgetFontSize('Global interpretability', '18px')
+        with st.expander('Global interpretability'):       
+            st.write("## Major factors in the model decision")
+            global_shap_enc_str = get_global_shap_image_enc_str()
+            # st.write(f'{r.text}')
+            display_base64_enc_img(global_shap_enc_str, 700, 1000)
+            # st.write(html)
+            # components.html(html)
         
-        st.image("https://i.stack.imgur.com/Ftxu7.png")
+        ChangeWidgetFontSize('Local interpretability', '18px')
+        with st.expander('Local interpretability'):
+            
         
-        st.write(
-            "A value pushing the decision to the left helps in getting"
-            " a loan. Otherwise, it plays against the customer."
-        )    
+            st.write(
+                "A value pushing the decision to the left helps in getting"
+                " a loan. Otherwise, it plays against the customer."
+            )    
         
 ########################################################################
 # Select a feature and a group and plot the distribution of the feature
@@ -280,21 +319,23 @@ with tab3:
         # a cache_data decorator
         groups = instantiate_groups()
         # Group selection
-        sel_group_name = st.radio(
-                    label="Who to compare too?",
-                    options=[g.name for g in groups],
-                    captions=[g.description for g in groups]
-                )
-        ChangeWidgetFontSize('Who to compare too?', '18px')
+        ChangeWidgetFontSize('Group selection', '18px')
+        with st.expander('Group selection'):
+            sel_group_name = st.radio(
+                        label="Who to compare too?",
+                        options=[g.name for g in groups],
+                        captions=[g.description for g in groups]
+                    )
+            ChangeWidgetFontSize('Who to compare too?', '18px')
         
-        ChangeWidgetFontSize('Univariate analysis', '20px')
+        ChangeWidgetFontSize('Univariate analysis', '18px')
         with st.expander('Univariate analysis'):
             # Feature selection
             sel_ft = st.selectbox(
-                label="Which feature to compare?",
+                label="Feature selection",
                 options=fts_by_model_importance,
             )
-            ChangeWidgetFontSize('Which feature to compare?', '18px')
+            ChangeWidgetFontSize('Feature selection', '16px')
             # Get the select group and use it to plot.
             sel_group = [g for g in groups if g.name == sel_group_name][0]
             fig = sel_group.plot_feature_kde_with_client_value(
@@ -312,7 +353,7 @@ with tab3:
             
             st.markdown(visual_elem.plot_note)
             
-        ChangeWidgetFontSize('Bi-variate analysis', '20px')
+        ChangeWidgetFontSize('Bi-variate analysis', '18px')
         with st.expander('Bi-variate analysis'):
             col1, _, col2 = st.columns([1, 0.2, 1])
             with col1:
@@ -320,13 +361,13 @@ with tab3:
                     label="Abscissa feature",
                     options=fts_by_model_importance,
                 )
-                ChangeWidgetFontSize('Abscissa feature', '18px')
+                ChangeWidgetFontSize('Abscissa feature', '16px')
                 
             with col2:
                 ft_y = st.selectbox(
                     label="Ordinate feature",
                     options=fts_by_model_importance,
                 )
-                ChangeWidgetFontSize('Ordinate feature', '18px')
+                ChangeWidgetFontSize('Ordinate feature', '16px')
 
             
