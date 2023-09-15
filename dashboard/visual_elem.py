@@ -144,9 +144,16 @@ tab_font_size = '''
 # Markdown
 ########################################################################
 
-plot_note = (
+univariate_plot_note = (
 """*Note:*
                                   
 Sometimes, the distribution of one class of customer is not displayed.
-It means there are no such customer in the group."""
+It means there is no such customer in the group with a known value."""
+)
+
+bivariate_plot_note = (
+"""*Note:*
+                                  
+If one class of customer is not displayed, it means there is no such\
+ customer in the group having both values known."""
 )
