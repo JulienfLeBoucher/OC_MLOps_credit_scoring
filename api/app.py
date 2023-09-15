@@ -7,6 +7,7 @@ import base64
 import pandas as pd
 import shap
 import api_utils
+import os
 
 ########################################################################
 """
@@ -61,11 +62,12 @@ else:
 features, target = api_utils.load_data(APP_DATA_PATH)
 valid_customer_ids = features.index
 
-# Get model Shap interpretability
+   
+# Instantiate the shap explainer
 explainer = shap.TreeExplainer(model)
 # shap values explainer with 3 fiels (values, base_values, data)
 sv = explainer(features)
-# Retain explanations only for being in the positive class.
+# Create explanations only for being in the positive class for all customers.
 exp = shap.Explanation(
     sv.values[:,:,1], 
     sv.base_values[:,1], 
@@ -126,8 +128,7 @@ def send_target():
 
 @app.get('/global_shap')
 def send_global_shap():
-    img_path = './shap_output/global_shap.png'
-    # Get the pyplot object without showing it
+    # Get the pyplot object without showing.
     fig = plt.figure()
     shap.summary_plot(
         exp,
@@ -136,36 +137,39 @@ def send_global_shap():
         plot_size=(10,13),
         show=False
     )
+    plt.tight_layout()
     # Save the image locally
-    fig.tight_layout()
-    fig.savefig(img_path)
+    img_path = './shap_output/global_shap.png'
+    plt.savefig(img_path)
     # read the image file and encode it adding the adapted prefix
     with open(img_path, 'rb') as img:
         img_binary_file_content = img.read()
         encoded = base64.b64encode(img_binary_file_content)
         return (b'data:image/png;base64,' + encoded)
     
-@app.get('/local_shap/<customer_id>')
-def send_global_shap():
-    img_path = './shap_output/global_shap.png'
-    # Get the pyplot object without showing it
-    fig = plt.figure()
-    shap.summary_plot(
-        exp,
-        features,
-        max_display=30,
-        plot_size=(10,13),
-        show=False
-    )
-    # Save the image locally
-    fig.tight_layout()
-    fig.savefig(img_path)
-    # read the image file and encode it adding the adapted prefix
-    with open(img_path, 'rb') as img:
-        img_binary_file_content = img.read()
-        encoded = base64.b64encode(img_binary_file_content)
-        return (b'data:image/png;base64,' + encoded)    
-    
+@app.get('/local_shap/<int:customer_id>')
+def send_local_shap(customer_id):
+    if customer_id in valid_customer_ids:
+        # Get the row index number of the customer to find its associated
+        # shap values in `exp`.
+        idx = api_utils.get_index(customer_id, features)
+        # Get the pyplot object from the shap library without showing
+        # and modify the size.
+        fig = plt.figure()
+        shap.plots.waterfall(exp[idx], show=False)
+        fig.set_figwidth(5)
+        fig.set_figheight(5)
+        # Save the image locally making sure labels are completely
+        # included with the bbox_inches parameter.
+        img_path = f'./shap_output/local_shap.png'
+        plt.savefig(img_path, bbox_inches='tight')
+        # Read the image file and encode it adding the adapted prefix
+        with open(img_path, 'rb') as img:
+            img_binary_file_content = img.read()
+            encoded = base64.b64encode(img_binary_file_content)
+            return (b'data:image/png;base64,' + encoded)    
+    else:
+        return 'oops'
 
 
 if __name__ == "__main__":

@@ -14,10 +14,9 @@ import re
 import visual_elem
 
 DEBUG = True
+DISPLAY_TECHNICAL_INFO = DEBUG
 
-#
 API_ROOT = "http://localhost:8435/"
-
 ICON_PATH = "./images/tab_icon.png"
 APP_NAME = "Credit attribution explorer"
 
@@ -29,16 +28,13 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 
-# DATA_URI = (
-#     '/home/louberehc/OCR/projets/7_scoring_model/'
-#     'pickle_files/reduced_data.pkl'
-# )
 
-def render_svg(svg):
+def render_svg(svg: str):
     """Renders the given svg string."""
     b64 = base64.b64encode(svg.encode('utf-8')).decode("utf-8")
     html = r'<img src="data:image/svg+xml;base64,%s"/>' % b64
     st.write(html, unsafe_allow_html=True)
+    
     
 @st.cache_data
 def get_data():
@@ -57,6 +53,7 @@ def get_data():
     # to a dataframe directly.
     t = r.text
     return pd.read_json(io.StringIO(t))
+
 
 @st.cache_data
 def get_target():
@@ -78,7 +75,7 @@ def get_target():
 
 
 @st.cache_data
-def get_customer_info(customer_id):
+def get_customer_info(customer_id: int):
     """ Request a model inference via the API and return the response."""
     request_url = urljoin(API_ROOT, f'prediction/{customer_id}')
     r = requests.get(request_url)
@@ -115,7 +112,7 @@ def instantiate_groups():
     return group_list
 
 
-def display_base64_enc_img(img_enc_str, width, height):
+def display_base64_enc_img(img_enc_str: str, width: int, height: int):
     # First get the image string without the prefix
     image_data = re.sub('^data:image/.+;base64,', '', img_enc_str)
     # Decode and open the image with pillow
@@ -127,6 +124,13 @@ def display_base64_enc_img(img_enc_str, width, height):
 @st.cache_data    
 def get_global_shap_image_enc_str():
     url = urljoin(API_ROOT, 'global_shap')
+    r = requests.get(url)
+    return r.text
+
+
+@st.cache_data
+def get_local_shap_image_enc_str(customer_id: int):
+    url = urljoin(API_ROOT, f'local_shap/{customer_id}')
     r = requests.get(url)
     return r.text
 
@@ -218,7 +222,7 @@ with st.sidebar:
             unsafe_allow_html=True
         )
         
-        if DEBUG:
+        if DISPLAY_TECHNICAL_INFO:
             st.divider()
             with st.expander('Technical information'):
                 st.write("Model information:")
@@ -289,27 +293,46 @@ with tab2:
     if customer_id == 'XXXXXX':
         st.write('')
     else: 
-        ChangeWidgetFontSize('Global interpretability', '18px')
-        with st.expander('Global interpretability'):       
+        ChangeWidgetFontSize('Globally', '18px')
+        with st.expander('Globally'):       
             st.write("## Major factors in the model decision")
             global_shap_enc_str = get_global_shap_image_enc_str()
-            # st.write(f'{r.text}')
             display_base64_enc_img(global_shap_enc_str, 700, 1000)
-            # st.write(html)
-            # components.html(html)
         
-        ChangeWidgetFontSize('Local interpretability', '18px')
-        with st.expander('Local interpretability'):
-            
+        ChangeWidgetFontSize('For the selected customer', '18px')
+        with st.expander('For the selected customer'):
+            display_base64_enc_img(
+                get_local_shap_image_enc_str(customer_id),
+                width=750,
+                height=400
+            )
         
             st.write(
-                "A value pushing the decision to the left helps in getting"
-                " a loan. Otherwise, it plays against the customer."
+                "A feature pushing the customer score to the left (blue color)" 
+                " means that the customer value for this feature is "
+                "well-perceived by the"
+                " model. It helps the credit attribution. \nOtherwise "
+                "(pink color), the "
+                "feature value is not well-perceived "
+                "by the model and it penalizes the customer score."
+                "\n\nThe most important features in the model decision "
+                " appear from top to bottom."
+                "\n\n Note that values on the x-axis are expressed "
+                "in the log-odds scale, "
+                "they "
+                "can be transformed to probability using the inverse "
+                "logit function.\n\n"
+                "Also note that E[f(x)] is the mean probability "
+                "for being in the risky class (in the log-odds scale) "
+                "calculated on all customers."
+                " As there are more customers without repayment risk, "
+                "this probability is lower than the "
+                "decision threshold. Do not make the confusion."
             )    
         
 ########################################################################
-# Select a feature and a group and plot the distribution of the feature
-# inside the group + pinpoint the customer value.
+# Select a one or two features and a group and plot accordingly
+# while showing the selected customer in the graph.
 ########################################################################
 with tab3:
     if customer_id == 'XXXXXX':
@@ -318,16 +341,21 @@ with tab3:
         # Group definitions once and for all thanks to a function with 
         # a cache_data decorator
         groups = instantiate_groups()
+        
         # Group selection
         ChangeWidgetFontSize('Group selection', '18px')
         with st.expander('Group selection'):
+            ChangeWidgetFontSize('Group selection', '18px')
+            
             sel_group_name = st.radio(
                         label="Who to compare too?",
                         options=[g.name for g in groups],
                         captions=[g.description for g in groups]
                     )
+            sel_group = [g for g in groups if g.name == sel_group_name][0]
             ChangeWidgetFontSize('Who to compare too?', '18px')
         
+        # Univariate analysis
         ChangeWidgetFontSize('Univariate analysis', '18px')
         with st.expander('Univariate analysis'):
             # Feature selection
@@ -337,7 +365,6 @@ with tab3:
             )
             ChangeWidgetFontSize('Feature selection', '16px')
             # Get the select group and use it to plot.
-            sel_group = [g for g in groups if g.name == sel_group_name][0]
             fig = sel_group.plot_feature_kde_with_client_value(
                 features_df=features,
                 target=target,
@@ -351,10 +378,12 @@ with tab3:
                     "There are to few people in the group to "
                     "plot a meaningful visualization.")
             
-            st.markdown(visual_elem.plot_note)
-            
+            st.markdown(visual_elem.univariate_plot_note)
+        
+        # Bi-variate analysis
         ChangeWidgetFontSize('Bi-variate analysis', '18px')
         with st.expander('Bi-variate analysis'):
+            # Selection of the 2 features
             col1, _, col2 = st.columns([1, 0.2, 1])
             with col1:
                 ft_x = st.selectbox(
@@ -369,5 +398,26 @@ with tab3:
                     options=fts_by_model_importance,
                 )
                 ChangeWidgetFontSize('Ordinate feature', '16px')
+            # Force to select 2 different features
+            if ft_x == ft_y:
+                st.error('Please select different features for the abscissa and the ordinate.')
+            
+            # Get the select group and use it to plot.
+            else:
+                fig_biv = sel_group.plot_scatter_with_client_value(
+                    features_df=features,
+                    target=target,
+                    customer_id=customer_id,
+                    feature_name_x=ft_x,
+                    feature_name_y=ft_y,
+                )
+                if fig is not None:
+                    st.pyplot(fig_biv)
+                else: 
+                    st.write(
+                        "There are to few people in the group to "
+                        "plot a meaningful visualization.")
+                
+                st.markdown(visual_elem.bivariate_plot_note)
 
             

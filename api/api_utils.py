@@ -72,3 +72,14 @@ def get_customer_proba(model, features, customer_id):
         format_customer_data(features, customer_id)
     )[0][1]
 
+
+def get_index(customer_id, features):
+    """ return the line index of a customer in features as a number
+    ranging from 0 to n-1, n being the shape[0] of features."""
+    return (
+        features
+        .reset_index()
+        .query('SK_ID_CURR == @customer_id')
+        .index
+        .values[0]
+    )
