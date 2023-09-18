@@ -3,37 +3,39 @@ from flask import Flask, jsonify, render_template
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('agg') # https://stackoverflow.com/questions/69924881/userwarning-starting-a-matplotlib-gui-outside-of-the-main-thread-will-likely-fa
+
 import base64
 import pandas as pd
 import shap
 import api_utils
 import os
+import pickle
 
-########################################################################
 """
 This API can find and load a model from the MLflow registry if
 the MLflow tracking folder is accessible. (It works locally.)
 
 Nevertheless, for deployment ease, I've also implemented a way
 to load a serialized pickle model which is provided directly in the 
-api directory in order to avoid deploying the mlflow tracking folder.
+api directory in order to avoid communication with an mlflow backend
+server I would have to configure.
 """
 
 ########################################################################
 # Variables
 ########################################################################
-DEBUG = True
+DEBUG = False
 # Choose the data to consider and load in the app
-APP_DATA_PATH = "/home/louberehc/OCR/projets/7_scoring_model/pickle_files/reduced_data.pkl"
+APP_DATA_PATH = "./reduced_data.pkl"
 
-# Above for local use.
-MLFLOW_BACKEND_AVAILABLE = True 
+# For local use, if I want to access the model registry.
+MLFLOW_BACKEND_AVAILABLE = False
 MLFLOW_TRACKING_URI = "/home/louberehc/OCR/projets/7_scoring_model/mlruns"
-# model attributes in the MLflow registry
 model_name = "lgbm_test_2"
 stage = "Staging"
 version = 2
-########################################################################    
+########################################################################  
+  
 ### Load the model 
 if MLFLOW_BACKEND_AVAILABLE:
     # if the model registry is accessible from the API
@@ -52,11 +54,12 @@ if MLFLOW_BACKEND_AVAILABLE:
     model_threshold = api_utils.get_model_threshold(model_run_id)
 else:
     # Load the model attached as a pkl object.
+    model = pickle.load(open('model.pkl', 'rb'))
+    # Change information accordingly and manually.
     model_name = "A_model_not_from_the_MLflow_registry"
     stage = ""
     version = 0
-    #TODO: load the pickle model.
-    # model_threshold = 
+    model_threshold = 0.15
 
 ### Load data
 features, target = api_utils.load_data(APP_DATA_PATH)
@@ -67,7 +70,8 @@ valid_customer_ids = features.index
 explainer = shap.TreeExplainer(model)
 # shap values explainer with 3 fiels (values, base_values, data)
 sv = explainer(features)
-# Create explanations only for being in the positive class for all customers.
+# Retain explanations only for being in the positive class for all 
+# customers.
 exp = shap.Explanation(
     sv.values[:,:,1], 
     sv.base_values[:,1], 
@@ -173,4 +177,6 @@ def send_local_shap(customer_id):
 
 
 if __name__ == "__main__":
+    # Note : this part is not run by Pythonanywhere where I'm hosting
+    # this API.
     app.run("localhost", port=8435, debug=DEBUG)
