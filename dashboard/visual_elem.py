@@ -61,7 +61,12 @@ ACCEPTED_SVG = """
 """
 
 def draw_score_bar(score):
-    """ Draw a score bar and position the customer score on it."""
+    """ Draw a score bar and position the customer score on it.
+    
+    The score must between 0 and 100, 50 being the decision boundary.
+    
+    A mapping function from model output to score bar position might
+    be necessary to give a fairly understandable representation."""
     svg = """
     <svg width="350" height="100" viewBox="0 0 120 30" version="1.1" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -134,3 +139,21 @@ tab_font_size = '''
     }
 </style>
 '''
+
+########################################################################
+# Markdown
+########################################################################
+
+univariate_plot_note = (
+"""*Note:*
+                                  
+Sometimes, the distribution of one class of customer is not displayed.
+It means there is no such customer in the group with a known value."""
+)
+
+bivariate_plot_note = (
+"""*Note:*
+                                  
+If one class of customer is not displayed, it means there is no such\
+ customer in the group having both values known."""
+)

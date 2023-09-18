@@ -52,7 +52,7 @@ The two last metrics would probably yield good results, but choosing the value o
 
 Here is a very simple evaluation metric (to be minimized) we could use.
 
-Let's simply count in the model's predictions the loss of income $LoI$ by counting $FP$ and $FN$ and weighting $FN$ as follow: $$LoI=5FN+FP$$ It has the disadvantage not to be clipped in $[0,1]$, but it does not need to be normalized as long as all models are trained on the same training set so they can be compared.  
+Let's simply count in the model's predictions the loss of income $LoI$ by counting $FP$ and $FN$ and weighting $FN$ as follow with regard to the population effective $N_{indiv}$: $$LoI=\dfrac{5FN+FP}{N_{indiv}}$$ It has the disadvantage not to be clipped in $[0,1]$, but it does not need to be normalized as long as all models are trained on the same training set so they can be compared.  
 
 
 
