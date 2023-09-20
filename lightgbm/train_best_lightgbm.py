@@ -15,14 +15,15 @@ from project_tools.scorer import Scorer
 ########################################################################
 # MAIN PARAMETER ZONE
 ########################################################################
+n_sample = 120_000
 # MLflow experiment name
-experiment_name = 'test_best_lightgbm'
-registered_model_name = 'lgbm_test_2'
+experiment_name = 'lightgbm'
+registered_model_name = f'lightgbm_{n_sample}'
 
 # utils.load_split_clip_scale_and_impute() parameters.
 pre_processing_params = dict(
         predictors=None, 
-        n_sample=3_000,
+        n_sample=n_sample,
         ohe=False,
         clip=False,
         scaling_method=None,
