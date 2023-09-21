@@ -24,16 +24,16 @@ server I would have to configure.
 ########################################################################
 # Variables
 ########################################################################
-DEBUG = False
+DEBUG = True
 # Choose the data to consider and load in the app
 APP_DATA_PATH = "./reduced_data.pkl"
 
 # For local use, if I want to access the model registry.
-MLFLOW_BACKEND_AVAILABLE = False
+MLFLOW_BACKEND_AVAILABLE = True
 MLFLOW_TRACKING_URI = "/home/louberehc/OCR/projets/7_scoring_model/mlruns"
-model_name = "lgbm_test_2"
-stage = "Staging"
-version = 2
+model_name = "lightgbm_280000"
+stage = "Production"
+version = 1
 ########################################################################  
   
 ### Load the model 
@@ -64,6 +64,9 @@ else:
 ### Load data
 features, target = api_utils.load_data(APP_DATA_PATH)
 valid_customer_ids = features.index
+sorted_features_by_importance = (
+    api_utils.get_sorted_features_by_importance(model)
+)
 
    
 # Instantiate the shap explainer
@@ -100,7 +103,8 @@ def model_info():
             'stage': stage,
             'version': version,
             'type': type(model).__name__,
-            'decision_threshold': model_threshold
+            'decision_threshold': model_threshold,
+            'sorted_features_by_importance': sorted_features_by_importance
         }
     )
 
@@ -177,6 +181,4 @@ def send_local_shap(customer_id):
 
 
 if __name__ == "__main__":
-    # Note : this part is not run by Pythonanywhere where I'm hosting
-    # this API.
     app.run("localhost", port=8435, debug=DEBUG)
