@@ -29,7 +29,7 @@ DEBUG = True
 APP_DATA_PATH = "./reduced_data.pkl"
 
 # For local use, if I want to access the model registry.
-MLFLOW_BACKEND_AVAILABLE = True
+MLFLOW_BACKEND_AVAILABLE = False
 MLFLOW_TRACKING_URI = "/home/louberehc/OCR/projets/7_scoring_model/mlruns"
 model_name = "lightgbm_280000"
 stage = "Production"
@@ -63,9 +63,11 @@ else:
 
 ### Load data
 features, target = api_utils.load_data(APP_DATA_PATH)
+
+# Derived major information
 valid_customer_ids = features.index
 sorted_features_by_importance = (
-    api_utils.get_sorted_features_by_importance(model)
+    api_utils.get_sorted_features_by_importance(model, features)
 )
 
    

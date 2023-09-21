@@ -16,7 +16,7 @@ import visual_elem
 DEBUG = True
 DISPLAY_TECHNICAL_INFO = DEBUG
 
-API_ROOT = "http://ec2-13-39-111-252.eu-west-3.compute.amazonaws.com:8000/"
+API_ROOT = "http://localhost:8435"
 ICON_PATH = "./images/tab_icon.png"
 APP_NAME = "Credit attribution explorer"
 
@@ -175,7 +175,7 @@ model_info = convert_requests_response_to_dict(get_model_info())
 model_threshold = model_info['decision_threshold']
 valid_customer_ids = list(features.index)
 
-fts_by_model_importance = features.columns # TODO: change with model global interp.
+fts_by_model_importance = model_info['sorted_features_by_importance']
 
 with st.sidebar:
     # Selection of the customer
