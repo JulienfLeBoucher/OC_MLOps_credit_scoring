@@ -15,7 +15,7 @@ from project_tools.scorer import Scorer
 ########################################################################
 # MAIN PARAMETER ZONE
 ########################################################################
-n_sample = 120_000
+n_sample = 280_000
 # MLflow experiment name
 experiment_name = 'lightgbm'
 registered_model_name = f'lightgbm_{n_sample}'
