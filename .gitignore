@@ -7,3 +7,4 @@ pickle_files/**
 classifiers_exploration/*.gz
 **/mlruns/**
 mentorat.md
+screenshots/**
