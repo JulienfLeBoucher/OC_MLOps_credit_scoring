@@ -46,6 +46,13 @@ def load_model(model_uri):
     return mlflow.sklearn.load_model(model_uri=model_uri)
 
 
+def get_sorted_features_by_importance(model):
+    """ Use the feature_importance attributes of
+    the lightgbm model to return features names sorted by importance
+    from the most to the least important."""
+    return list(model.feature_importances_.argsort()[::-1])
+
+
 # Load data
 def load_data(DATA_PATH):
     """ Load both the features and the target associated to customers """
