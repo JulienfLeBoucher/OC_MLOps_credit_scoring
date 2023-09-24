@@ -1,8 +1,5 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
-name: "Test and deploy API to EC2 instance"
-run-name: "Test and deploy API to EC2 instance"
+name: "Build Test and Deploy API to EC2 instance"
+run-name: "Build Test and Deploy API to EC2 instance"
 
 on:
   push:
@@ -47,9 +44,9 @@ jobs:
           APP_DIR: ${{ secrets.APP_DIR }}
           SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
 
-        run: |
-          echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
-          ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOST_NAME} "
-            cd ${APP_DIR} &&
-            git pull &&
-            echo ${USER_PASSWORD} | sudo -S systemctl restart ${SERVICE_NAME} "
+      run: |
+        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+        ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOST_NAME} "
+          cd ${APP_DIR} &&
+          git pull &&
+          echo ${USER_PASSWORD} | sudo -S systemctl restart ${SERVICE_NAME} "
