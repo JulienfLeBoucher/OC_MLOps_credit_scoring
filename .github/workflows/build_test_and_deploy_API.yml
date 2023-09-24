@@ -24,10 +24,10 @@ jobs:
         python -m pip install --upgrade pip
         cd api
         pip install -r requirements.txt
+        cd ~
     - name: Test with unittest
       run: |
-        python -m unittest test
-        cd ~
+        python -m unittest discover api
     - name: Deploy to EC2 through ssh
       env:
           AWS_PRIVATE_KEY: ${{ secrets.AWS_PRIVATE_KEY }}
