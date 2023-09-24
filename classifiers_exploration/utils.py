@@ -591,8 +591,7 @@ def class_percentages(target):
     """
     Print percentages of each element in target.
     """
-    display(target.value_counts() * 100 / len(target))
-    return None    
+    return target.value_counts() * 100 / len(target)
 
 
 def make_folds(stratified=True):
