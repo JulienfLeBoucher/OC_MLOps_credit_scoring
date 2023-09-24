@@ -40,6 +40,6 @@ jobs:
         cd ${APP_DIR} &&
         git stash &&
         git pull &&
-        kill -9 $(ps -a | grep "flask" | grep -v "grep" | awk '{print $1}') &&
+        kill -9 $(ps -a | grep 'flask' | grep -v 'grep' | awk '{print $1}') &&
         tmux attach -f API &&
         flask run --host=0.0.0.0 --port=8000 "
