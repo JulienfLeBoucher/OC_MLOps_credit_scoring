@@ -26,7 +26,7 @@ server I would have to configure.
 ########################################################################
 DEBUG = True
 # Choose the data to consider and load in the app
-APP_DATA_PATH = "./reduced_data.pkl"
+APP_DATA_PATH = os.path.join(os.path.dirname(__file__) , 'reduced_data.pkl')
 
 # For local use, if I want to access the model registry.
 MLFLOW_BACKEND_AVAILABLE = False
@@ -54,7 +54,8 @@ if MLFLOW_BACKEND_AVAILABLE:
     model_threshold = api_utils.get_model_threshold(model_run_id)
 else:
     # Load the model attached as a pkl object.
-    model = pickle.load(open('model.pkl', 'rb'))
+    model_path = os.path.join(os.path.dirname(__file__) , 'model.pkl')
+    model = pickle.load(open(model_path, 'rb'))
     # Change information accordingly and manually.
     model_name = "A_model_not_from_the_MLflow_registry"
     stage = ""
