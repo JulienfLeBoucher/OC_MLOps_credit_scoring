@@ -38,6 +38,7 @@ jobs:
         echo "$AWS_PRIVATE_KEY" > private_key && chmod 400 private_key
         ssh -tt -o StrictHostKeyChecking=no -i private_key ec2-user@${HOST_NAME} "
         cd ${APP_DIR} &&
+        git stash &&
         git pull &&
         kill -9 $(ps -a | grep "flask" | grep -v "grep" | awk '{print $1}') &&
         tmux attach -f API &&
