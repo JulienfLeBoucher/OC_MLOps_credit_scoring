@@ -1,0 +1,55 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: "Test and deploy API to EC2 instance"
+run-name: "Test and deploy API to EC2 instance"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'api/**'
+
+jobs:
+  build_test_and_deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python 3.11 and cache it
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+        cache: "pip"
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 unittest
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - name: Lint with flake8
+      run: |
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    - name: Test with unittest
+      run: |
+        cd api
+        python -m unittest test
+        cd ..
+    - name: Deploy to EC2 through ssh
+      env:
+          PRIVATE_KEY: ${{ secrets.AWS_PRIVATE_KEY }}
+          HOST_NAME : ${{ secrets.HOST_NAME }}
+          USER_NAME : ${{ secrets.USER_NAME }}
+          USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
+          APP_DIR: ${{ secrets.APP_DIR }}
+          SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
+
+        run: |
+          echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+          ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOST_NAME} "
+            cd ${APP_DIR} &&
+            git pull &&
+            echo ${USER_PASSWORD} | sudo -S systemctl restart ${SERVICE_NAME} "
