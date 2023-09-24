@@ -38,9 +38,9 @@ jobs:
 
       run: |
         echo "$AWS_PRIVATE_KEY" > private_key && chmod 400 private_key
-        ssh -o StrictHostKeyChecking=no -i private_key ec2-user@${HOST_NAME} "
-          cd ${APP_DIR} &&
-          git pull &&
-          kill -9 $(ps -a | grep "flask" | grep -v "grep" | awk '{print $1}') &&
-          tmux attach -f API &&
-          flask run --host=0.0.0.0 --port=8000 "
+        ssh -o StrictHostKeyChecking=no -i private_key ec2-user@${HOST_NAME}
+        cd ${APP_DIR} &&
+        git pull &&
+        kill -9 $(ps -a | grep "flask" | grep -v "grep" | awk '{print $1}') &&
+        tmux attach -f API &&
+        flask run --host=0.0.0.0 --port=8000
