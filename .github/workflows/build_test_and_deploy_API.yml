@@ -36,7 +36,7 @@ jobs:
 
       run: |
         echo "$AWS_PRIVATE_KEY" > private_key && chmod 400 private_key
-        ssh -t -o StrictHostKeyChecking=no -i private_key ec2-user@${HOST_NAME} "
+        ssh -tt -o StrictHostKeyChecking=no -i private_key ec2-user@${HOST_NAME} "
         cd ${APP_DIR} &&
         git pull &&
         kill -9 $(ps -a | grep "flask" | grep -v "grep" | awk '{print $1}') &&
