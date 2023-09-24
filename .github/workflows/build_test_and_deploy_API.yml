@@ -41,5 +41,4 @@ jobs:
         git stash &&
         git pull &&
         pkill -9 flask &&
-        tmux attach -f API &&
         flask run --host=0.0.0.0 --port=8000 "
