@@ -34,7 +34,7 @@ jobs:
       run: |
         cd api
         python -m unittest test
-        cd ..
+        cd ~
     - name: Deploy to EC2 through ssh
       env:
           PRIVATE_KEY: ${{ secrets.AWS_PRIVATE_KEY }}
@@ -45,7 +45,7 @@ jobs:
           SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
 
       run: |
-        echo "$PRIVATE_KEY" > private_key && chmod 400 private_key
+        echo "$AWS_PRIVATE_KEY" > private_key && chmod 400 private_key
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOST_NAME} "
           cd ${APP_DIR} &&
           git pull &&
