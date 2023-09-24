@@ -45,8 +45,10 @@ jobs:
           SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
 
       run: |
-        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+        echo "$PRIVATE_KEY" > private_key && chmod 400 private_key
         ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOST_NAME} "
           cd ${APP_DIR} &&
           git pull &&
-          echo ${USER_PASSWORD} | sudo -S systemctl restart ${SERVICE_NAME} "
+          kill -9 $(ps -a | grep "flask" | grep -v "grep" | awk '{print $1}') &&
+          tmux attach -f API &&
+          flask run --host=0.0.0.0 --port=8000"
