@@ -16,7 +16,7 @@ import visual_elem
 DEBUG = True
 DISPLAY_TECHNICAL_INFO = DEBUG
 
-API_ROOT = "http://localhost:8435"
+API_ROOT = "ec2-35-180-169-198.eu-west-3.compute.amazonaws.com:8000"
 ICON_PATH = "./images/tab_icon.png"
 APP_NAME = "Credit attribution explorer"
 
