@@ -37,9 +37,9 @@ jobs:
       run: |
         echo "$AWS_PRIVATE_KEY" > private_key && chmod 400 private_key
         ssh -tt -o StrictHostKeyChecking=no -i private_key ec2-user@${HOST_NAME} "
-        cd ${APP_DIR} &&
-        git stash &&
-        git pull &&
-        pkill -9 flask &&
-        export FLASK_APP='my_app.py' &&
-        flask run --host=0.0.0.0 --port=8000 > flask.log 2>&1 & "
+          cd ${APP_DIR} &&
+          git stash &&
+          git pull &&
+          pkill -9 flask &&
+          export FLASK_APP='my_app.py' &&
+          flask run --host=0.0.0.0 --port=8000 > flask.log 2>&1 & "
