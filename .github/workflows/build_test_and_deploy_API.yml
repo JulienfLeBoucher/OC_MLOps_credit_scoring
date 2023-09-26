@@ -39,7 +39,6 @@ jobs:
         ssh -t -o StrictHostKeyChecking=no -i private_key ec2-user@${HOST_NAME} "
           cd ${APP_DIR} &&
           git pull origin main &&
-          touch empty_file.txt &&
-          pkill -9 flask &&
+          kill -9 $(ps -ef | grep flask | grep -v grep | awk '{print $2}')
           export FLASK_APP='my_app.py' &&
           flask run --host=0.0.0.0 --port=8000 > flask.log 2>&1 & "
