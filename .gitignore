@@ -9,3 +9,4 @@ classifiers_exploration/*.gz
 mentorat.md
 screenshots/**
 .~lock.Note_methodologique.odt#
+api/shap_output/**
