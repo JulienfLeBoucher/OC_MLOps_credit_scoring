@@ -90,7 +90,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def welcome():
-    return ("Welcome! Github Actions ok :]?")
+    return ("Welcome! Github Actions ok (: ?")
 
 
 @app.route('/prediction/')
