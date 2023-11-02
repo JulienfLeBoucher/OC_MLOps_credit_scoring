@@ -12,11 +12,14 @@ import base64
 from PIL import Image
 import re
 import visual_elem
+import os
 
 DEBUG = True
 DISPLAY_TECHNICAL_INFO = DEBUG
 
-API_ROOT = "http://ec2-35-180-169-198.eu-west-3.compute.amazonaws.com:8000"
+# use export API_ROOT=XXXXX before launching the app with
+# 'streamlit run dashboard.py'
+API_ROOT = os.environ.get('API_ROOT')
 ICON_PATH = "./images/tab_icon.png"
 APP_NAME = "Credit attribution explorer"
 
