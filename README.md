@@ -15,7 +15,7 @@ Apply the script of this [GitHub repository](https://github.com/js-aguiar/home-c
 
 The resulting dataset is to be saved to this path:  './pickle_files/features.pkl.gz'. 
 
-In this [exploratory notebook](https://nbviewer.org/github/JulienfLeBoucher/OC_MLOps_credit_scoring/blob/main/quick_EDA_of_Kaggle_Aguiar_feature_engineering.ipynb#toc0_), one can understand how I discovered the raw data content and have a glance at the results of the feature engineering.
+In this [exploratory notebook](https://nbviewer.org/github/JulienfLeBoucher/OC_MLOps_credit_scoring/blob/main/quick_EDA_of_Kaggle_Aguiar_feature_engineering.ipynb), one can understand how I discovered the raw data content and have a glance at the results of the feature engineering.
 
 ## Approach to build a model to predict one customer's credit score.
 
@@ -25,7 +25,7 @@ The hyperparameters search was made with hyperopt, using a cross-validation sche
 
 Note that each tracked metric (AUC, f-2 and my custom metric) were not computed applying the default cut off threshold of 0.5. A post-training threshold moving technique was applied to optimize each value in order to address the class imbalance problem. 
 
-The methodology is further described in [this note](https://github.com/JulienfLeBoucher/OC_MLOps_credit_scoring/blob/main/Note_methodologique.pdf) (in french).
+The methodology is further described in this [presentation](https://github.com/JulienfLeBoucher/OC_MLOps_credit_scoring/blob/main/p7_presentation.pdf), with complements in [this note](https://github.com/JulienfLeBoucher/OC_MLOps_credit_scoring/blob/main/Note_methodologique.pdf) (in french).
 ___
 The subdirectory *hyperparameter_tuning* is the MLproject which ensures the reproducibility of the search of the best classifier family for the task. 2 classes of algorithms best-performed: lightgbm classifiers and random forest classifiers.
 
