@@ -1,4 +1,4 @@
-# Adopt a MLops cycle to build and deploy a model of credit scoring
+# Use a MLops cycle to build and deploy a model of credit scoring
 
 Raw data can be found [here](https://www.kaggle.com/c/home-credit-default-risk/data).
 ___
@@ -19,13 +19,15 @@ In this [exploratory notebook](https://nbviewer.org/github/JulienfLeBoucher/OC_M
 
 ## Approach to build a model to predict one customer's credit score.
 
-I basically chose to prepare a subset of the processed data to feed several types of classifiers and organize an hyperparameters search for each of them in order to find the most performant.
+I basically chose to feed several types of classifiers with a subset of the processed data. For each of them, I organized an hyperparameters search to retain the most performant classes.
 
-The hyperparameter search was made with hyperopt, using a cross-validation scheme, and optimizing a custom metric discussed [here](https://github.com/JulienfLeBoucher/OC_MLOps_credit_scoring/blob/main/report.md). 
+The hyperparameters search was made with hyperopt, using a cross-validation scheme, and optimizing a custom metric discussed [here](https://github.com/JulienfLeBoucher/OC_MLOps_credit_scoring/blob/main/report.md). 
 
-Note that each performance measurement include a post-training threshold moving to optimize its value.
+Note that each tracked metric (AUC, f-2 and my custom metric) were not computed applying the default cut off threshold of 0.5. A post-training threshold moving technique was applied to optimize each value in order to address the class imbalance problem. 
 
-The subdirectory *hyperparameter_tuning* is the MLproject which ensures the reproducibility of this search. 2 classes of algorithms best-performed - lightgbm classifiers and random forest classifiers.
+The methodology is further described in [this note](https://github.com/JulienfLeBoucher/OC_MLOps_credit_scoring/blob/main/Note_methodologique.pdf) (in french).
+___
+The subdirectory *hyperparameter_tuning* is the MLproject which ensures the reproducibility of the search of the best classifier family for the task. 2 classes of algorithms best-performed: lightgbm classifiers and random forest classifiers.
 
 *random_forest* and *lightgbm* are the two subsequent MLprojects made to fine-tune the models with more data and iterations.
 
@@ -88,7 +90,7 @@ streamlit run dashboard.py
 ```
 ___
 
-The dashboard is made of 3 tabs, which interacts with the customer_id:
+The dashboard is made of 3 tabs, which interacts with the selected customer_id:
 - to explore one customer's data;
 - to get model explainability;
 - to compare one customer to some others.
@@ -99,11 +101,11 @@ When selecting a customer_id, the class and a visual representation of the model
 
 ![customer_data](./dashboard_screenshots/customer_data.png)
 
-In the first tab, one can display a selection of features of interest.
+In the first tab, one can restrict features to be displayed.
 
 ![customer_data_selection](./dashboard_screenshots/customer_data_selection.png)
 
-The second tab let you observe global and local explainability of the model returned with the shap library:
+The second tab let you observe global and local explainability of the model:
 
 ![second_tab](./dashboard_screenshots/interpretability.png)
 
@@ -111,7 +113,7 @@ The second tab let you observe global and local explainability of the model retu
 
 ![second_tab_local](./dashboard_screenshots/local_interpretability.png)
 
-Finally, the last tab is a comparison zone. First, you can choose the kind of customers you want to compare too.
+Finally, the last tab is a comparison zone. First, you can choose the kind of customers you want the selected customer to be compared to.
 
 ![third_tab_group](./dashboard_screenshots/group_choice.png)
 
